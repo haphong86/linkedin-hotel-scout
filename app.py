@@ -353,6 +353,25 @@ with tab_bulk:
     stats = get_scan_stats()
     total_queries = len(build_all_queries())
 
+    # ⚠️ CẢNH BÁO QUAN TRỌNG
+    st.error("""
+🔴 **SCAN PHẢI CHẠY TRÊN MÁY TÍNH CỦA ANH — KHÔNG PHẢI RAILWAY!**
+
+LinkedIn chặn IP của server Railway (datacenter IP) → luôn trả về 0 kết quả dù cookie đúng.
+
+**Mở Terminal trên máy Mac, chạy lệnh này:**
+```
+cd "/Users/dhp/Documents/Phân tích KS | Email KS/linkedin-hotel-scout"
+python3 run_scanner.py --cookie "PASTE_COOKIE_LI_AT_VÀO_ĐÂY"
+```
+
+Muốn scan từng khu vực:
+```
+python3 run_scanner.py --cookie "..." --region "Đà Nẵng"
+python3 run_scanner.py --cookie "..." --region "Hội An"
+```
+    """)
+
     st.markdown(f"""
     <div style="background:linear-gradient(135deg,#0D0D0D,#080808);border:1px solid #E50914;border-radius:4px;padding:20px 24px;margin-bottom:20px;">
       <div style="font-size:10px;letter-spacing:2px;color:#E50914;font-weight:700;text-transform:uppercase;">SCAN LINKEDIN LIÊN TỤC TOÀN QUỐC</div>
