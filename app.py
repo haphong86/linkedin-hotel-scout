@@ -2,6 +2,7 @@
 app.py — LinkedIn Hotel VIP Auto-Scout & Growth Bot (Hà Phong Visuals)
 Cơ chế: TỰ ĐỘNG HÓA 24/7/365 TRÊN CLOUD (AUTO-PILOT ACTIVE)
 Cơ chế hàng đợi: HÀNG ĐỢI 2 TẦNG (TOP 20 + DỰ BỊ #21+ ĐÔN LÊN TỰ ĐỘNG)
+Cơ chế liên kết: 100% LINK PERMALINK CHÍNH THỨC (/in/username-hash/)
 Chế độ: CHỈ BẤM KẾT BẠN TRỰC TIẾP — TUYỆT ĐỐI KHÔNG GỬI TIN NHẮN SPAM
 Chạy: streamlit run app.py
 """
@@ -31,7 +32,7 @@ from database.models import init_db, get_session, HotelExecutive, ConnectionLog,
 from engine.linkedin_bot import (
     get_daily_quota_status, send_direct_connection, get_setting, set_setting
 )
-from engine.priority_queue import get_daily_queue_20, get_backlog_queue_21_plus, get_linkedin_people_url, get_google_xray_url
+from engine.priority_queue import get_daily_queue_20, get_backlog_queue_21_plus
 from engine.telegram_notifier import send_telegram_daily_report
 from scheduler.heartbeat_tracker import get_heartbeat_status, log_activity
 from scheduler.background_worker import start_background_worker, is_autopilot_active, set_autopilot_status, execute_daily_autopilot_cycle
@@ -256,7 +257,7 @@ with tab_queue:
             st.markdown(f"""
             **Trạng thái Auto-Pilot:** ⚙️ *{hb.get('current_task', 'Đang giám sát và sẵn sàng chu kỳ quét mới')}*  
             **Ghi nhận lần cuối:** `{hb.get('last_heartbeat', '—')}`  
-            **Chế độ:** `🟢 Tự Động Hóa 24/7/365 (Chạy ngầm vĩnh cửu trên Cloud)`
+            **Chế độ:** `🟢 Tự Động Hóa 24/7/365 (100% URL Permalink Chính Thức)`
             """)
         with hb_col2:
             if st.button("🔄 Làm mới trạng thái", key="refresh_monitor_btn", use_container_width=True):
@@ -276,9 +277,9 @@ with tab_queue:
     <div style="background:linear-gradient(135deg, #121212 0%, #0A0A0A 100%); border:1px solid #E50914; border-radius:4px; padding:20px 24px; margin-bottom:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
         <div>
-          <div style="font-size:10px; letter-spacing:2px; color:#E50914; font-weight:700; text-transform:uppercase;">1-CLICK MASTER AUTO-PILOT 24/7/365</div>
+          <div style="font-size:10px; letter-spacing:2px; color:#E50914; font-weight:700; text-transform:uppercase;">100% LINK PERMALINK CHÍNH THỨC (/in/username-hash/)</div>
           <div style="font-family:'Montserrat',sans-serif; font-size:24px; font-weight:700; color:#FFF; margin:4px 0;">Top 20 Lãnh Đạo Ưu Tiên Hôm Nay</div>
-          <div style="font-size:12px; color:#999;">Hệ thống tự động chạy ngầm mỗi ngày 24/7/365 trên Railway: Tự động kết nối 20 sếp lớn ➔ Tự động đôn hàng đợi ➔ Bắn báo cáo Telegram.</div>
+          <div style="font-size:12px; color:#999;">Mỗi nút bấm dẫn thẳng tới trang cá nhân chính thức của vị sếp đó trên LinkedIn với nút Connect mở sẵn (Triệt tiêu 100% lỗi).</div>
         </div>
         <div>
           <div style="font-size:10px; color:#4a7c59; font-weight:700;">● CLOUD SERVER: ACTIVE 24/7/365</div>
@@ -330,14 +331,10 @@ with tab_queue:
                       <div style="font-size:13px; color:#E50914; font-weight:600; margin-top:2px;">{lead['title']} · <span style="color:#FFF;">{lead['company']}</span></div>
                       <div style="font-size:11px; color:#888; margin-top:4px;">📍 {lead['location']} | Điểm ưu tiên: <b style="color:#FFF;">{lead['lead_score']}đ</b></div>
                     </div>
-                    <div style="text-align:right; display:flex; gap:8px;">
-                      <a href="{lead['linkedin_url']}" target="_blank"
-                         style="display:inline-block; background:#E50914; color:#FFF; padding:8px 16px; border-radius:4px; font-size:12px; text-decoration:none; font-weight:700;">
-                         ➕ Bấm Kết Bạn (LinkedIn)
-                      </a>
-                      <a href="{lead['google_url']}" target="_blank"
-                         style="display:inline-block; background:#1C1C1C; border:1px solid #444; color:#DDD; padding:8px 14px; border-radius:4px; font-size:12px; text-decoration:none; font-weight:600;">
-                         🔍 Xem Trên Google
+                    <div style="text-align:right;">
+                      <a href="{lead['profile_url']}" target="_blank"
+                         style="display:inline-block; background:#E50914; color:#FFF; padding:9px 20px; border-radius:4px; font-size:12px; text-decoration:none; font-weight:700; box-shadow:0 2px 8px rgba(229,9,20,0.4);">
+                         ➕ Xem Profile & Kết Bạn (LinkedIn)
                       </a>
                     </div>
                   </div>
@@ -353,7 +350,7 @@ with tab_backlog:
     <div style="background:#111; border:1px solid #222; border-left:4px solid #FFA500; border-radius:4px; padding:16px 20px; margin-bottom:18px;">
       <div style="font-size:15px; font-weight:700; color:#FFF;">📋 Hàng Đợi Dự Bị (Xếp hàng từ vị trí #21 trở đi)</div>
       <div style="font-size:12px; color:#AAA; margin-top:4px;">
-        Toàn bộ các General Manager, DOSM, Marcom Manager đã được hệ thống quét sẵn. Khi bạn bấm kết nối 1 người ở Tab 1, người đứng đầu danh sách này sẽ <b>tự động được đẩy bù lên Top 20</b>.
+        Toàn bộ các General Manager, DOSM, Marcom Manager đã được lưu với <b>Link Profile Chính Thức (/in/username-hash/)</b>. Khi bạn kết nối 1 người ở Tab 1, người đứng đầu danh sách này sẽ <b>tự động được đẩy bù lên Top 20</b>.
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -373,14 +370,10 @@ with tab_backlog:
                       <div style="font-size:14px; font-weight:700; color:#DDD;">#{lead['queue_index']}. {lead['name']} <span style="font-size:9px; color:#888; border:1px solid #444; padding:2px 5px; border-radius:3px; margin-left:6px;">{lead['priority_badge']}</span></div>
                       <div style="font-size:12px; color:#BBB; margin-top:2px;">{lead['title']} · <b style="color:#FFF;">{lead['company']}</b> ({lead['city']})</div>
                     </div>
-                    <div style="display:flex; gap:6px;">
-                      <a href="{lead['linkedin_url']}" target="_blank"
-                         style="display:inline-block; background:#E50914; color:#FFF; padding:6px 12px; border-radius:4px; font-size:11px; text-decoration:none; font-weight:700;">
-                         ➕ Kết Bạn
-                      </a>
-                      <a href="{lead['google_url']}" target="_blank"
-                         style="display:inline-block; background:#1A1A1A; border:1px solid #444; color:#FFF; padding:6px 12px; border-radius:4px; font-size:11px; text-decoration:none; font-weight:600;">
-                         🔍 Xem Profile
+                    <div>
+                      <a href="{lead['profile_url']}" target="_blank"
+                         style="display:inline-block; background:#E50914; color:#FFF; padding:6px 14px; border-radius:4px; font-size:11px; text-decoration:none; font-weight:700;">
+                         ➕ Xem Profile & Kết Bạn
                       </a>
                     </div>
                   </div>
@@ -410,8 +403,7 @@ with tab_directory:
                 "Khu Vực": e.city,
                 "Trạng Thái": e.status,
                 "Điểm Ưu Tiên": f"{e.lead_score}đ",
-                "Link LinkedIn": get_linkedin_people_url(e.name),
-                "Link Google": get_google_xray_url(e.name, e.company)
+                "Link Profile Gốc": e.profile_url
             })
         df = pd.DataFrame(data)
         st.dataframe(df, use_container_width=True)
