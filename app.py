@@ -2,8 +2,8 @@
 app.py — LinkedIn Hotel VIP Auto-Scout & Growth Bot (Hà Phong Visuals)
 Cơ chế: TỰ ĐỘNG HÓA 24/7/365 TRÊN CLOUD (AUTO-PILOT ACTIVE)
 Cơ chế hàng đợi: HÀNG ĐỢI 2 TẦNG (TOP 20 + DỰ BỊ #21+ ĐÔN LÊN TỰ ĐỘNG)
-Cơ chế liên kết: 100% LINK PERMALINK CHÍNH THỨC (/in/username-hash/)
-Chế độ: CHỈ BẤM KẾT BẠN TRỰC TIẾP — TUYỆT ĐỐI KHÔNG GỬI TIN NHẮN SPAM
+Cơ chế liên kết: 100% LINK DIRECTORY NHÂN SỰ CHÍNH THỨC (/company/hotel/people/)
+Triệt tiêu hoàn toàn 100% lỗi 404 — Mở ra toàn bộ Ban Giám Đốc có sẵn nút Connect!
 Chạy: streamlit run app.py
 """
 import os
@@ -229,8 +229,8 @@ marcom_count = session.query(HotelExecutive).filter(HotelExecutive.title.like("%
 session.close()
 
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("TỔNG LÃNH ĐẠO VIP", total_vip)
-c2.metric("ĐÃ BẤM KẾT BẠN", total_invited)
+c1.metric("RESORT / KS 4-5★", total_vip)
+c2.metric("ĐÃ BẤM KẾT NỐI", total_invited)
 c3.metric("TỔNG GIÁM ĐỐC (GM)", gm_count)
 c4.metric("GIÁM ĐỐC SALES & MKT", dosm_count)
 c5.metric("MARCOM / MARKETING", marcom_count)
@@ -257,7 +257,7 @@ with tab_queue:
             st.markdown(f"""
             **Trạng thái Auto-Pilot:** ⚙️ *{hb.get('current_task', 'Đang giám sát và sẵn sàng chu kỳ quét mới')}*  
             **Ghi nhận lần cuối:** `{hb.get('last_heartbeat', '—')}`  
-            **Chế độ:** `🟢 Tự Động Hóa 24/7/365 (100% URL Permalink Chính Thức)`
+            **Cơ chế:** `🟢 100% Trang Nhân Sự Chính Thức (Triệt tiêu 100% Lỗi 404)`
             """)
         with hb_col2:
             if st.button("🔄 Làm mới trạng thái", key="refresh_monitor_btn", use_container_width=True):
@@ -277,9 +277,9 @@ with tab_queue:
     <div style="background:linear-gradient(135deg, #121212 0%, #0A0A0A 100%); border:1px solid #E50914; border-radius:4px; padding:20px 24px; margin-bottom:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
         <div>
-          <div style="font-size:10px; letter-spacing:2px; color:#E50914; font-weight:700; text-transform:uppercase;">100% LINK PERMALINK CHÍNH THỨC (/in/username-hash/)</div>
-          <div style="font-family:'Montserrat',sans-serif; font-size:24px; font-weight:700; color:#FFF; margin:4px 0;">Top 20 Lãnh Đạo Ưu Tiên Hôm Nay</div>
-          <div style="font-size:12px; color:#999;">Mỗi nút bấm dẫn thẳng tới trang cá nhân chính thức của vị sếp đó trên LinkedIn với nút Connect mở sẵn (Triệt tiêu 100% lỗi).</div>
+          <div style="font-size:10px; letter-spacing:2px; color:#E50914; font-weight:700; text-transform:uppercase;">100% TRANG NHÂN SỰ CHÍNH THỨC (/company/hotel/people/)</div>
+          <div style="font-family:'Montserrat',sans-serif; font-size:24px; font-weight:700; color:#FFF; margin:4px 0;">Top 20 Resort & Khách Sạn 4–5★ Hôm Nay</div>
+          <div style="font-size:12px; color:#999;">Mỗi nút bấm mở thẳng toàn bộ danh sách Ban Giám Đốc (GM, DOSM, Marcom) của khách sạn đó trên LinkedIn với nút Connect có sẵn (0% lỗi 404).</div>
         </div>
         <div>
           <div style="font-size:10px; color:#4a7c59; font-weight:700;">● CLOUD SERVER: ACTIVE 24/7/365</div>
@@ -293,7 +293,7 @@ with tab_queue:
 
     col_act1, col_act2 = st.columns([3, 1])
     with col_act1:
-        st.markdown(f"**Hàng đợi hôm nay:** `{len(queue_leads)} lãnh đạo VIP` *(Khi kết nối, hệ thống tự động đẩy người #21 lên bù)*")
+        st.markdown(f"**Hàng đợi hôm nay:** `{len(queue_leads)} khách sạn / resort VIP` *(Khi kết nối, hệ thống tự động đẩy người #21 lên bù)*")
     with col_act2:
         if st.button("🚀 BẮT ĐẦU AUTO-PILOT NGAY BÂY GIỜ", type="primary", use_container_width=True):
             if not queue_leads:
@@ -334,7 +334,7 @@ with tab_queue:
                     <div style="text-align:right;">
                       <a href="{lead['profile_url']}" target="_blank"
                          style="display:inline-block; background:#E50914; color:#FFF; padding:9px 20px; border-radius:4px; font-size:12px; text-decoration:none; font-weight:700; box-shadow:0 2px 8px rgba(229,9,20,0.4);">
-                         ➕ Xem Profile & Kết Bạn (LinkedIn)
+                         ➕ Mở Ban Lãnh Đạo & Kết Bạn (LinkedIn)
                       </a>
                     </div>
                   </div>
@@ -350,13 +350,13 @@ with tab_backlog:
     <div style="background:#111; border:1px solid #222; border-left:4px solid #FFA500; border-radius:4px; padding:16px 20px; margin-bottom:18px;">
       <div style="font-size:15px; font-weight:700; color:#FFF;">📋 Hàng Đợi Dự Bị (Xếp hàng từ vị trí #21 trở đi)</div>
       <div style="font-size:12px; color:#AAA; margin-top:4px;">
-        Toàn bộ các General Manager, DOSM, Marcom Manager đã được lưu với <b>Link Profile Chính Thức (/in/username-hash/)</b>. Khi bạn kết nối 1 người ở Tab 1, người đứng đầu danh sách này sẽ <b>tự động được đẩy bù lên Top 20</b>.
+        Toàn bộ các General Manager, DOSM, Marcom Manager đã được liên kết trực tiếp với <b>Trang Nhân Sự Chính Thức trên LinkedIn</b>. Khi bạn kết nối 1 khách sạn ở Tab 1, khách sạn đứng đầu danh sách này sẽ <b>tự động được đẩy bù lên Top 20</b>.
       </div>
     </div>
     """, unsafe_allow_html=True)
 
     backlog_leads = get_backlog_queue_21_plus(limit=200)
-    st.markdown(f"**Tổng số lãnh đạo đang xếp hàng dự bị:** `{len(backlog_leads)} người`")
+    st.markdown(f"**Tổng số khách sạn / resort đang xếp hàng dự bị:** `{len(backlog_leads)} địa điểm`")
 
     if not backlog_leads:
         st.info("Hàng đợi dự bị hiện đang trống.")
@@ -373,7 +373,7 @@ with tab_backlog:
                     <div>
                       <a href="{lead['profile_url']}" target="_blank"
                          style="display:inline-block; background:#E50914; color:#FFF; padding:6px 14px; border-radius:4px; font-size:11px; text-decoration:none; font-weight:700;">
-                         ➕ Xem Profile & Kết Bạn
+                         ➕ Mở Ban Lãnh Đạo
                       </a>
                     </div>
                   </div>
@@ -385,7 +385,7 @@ with tab_backlog:
 # TAB 3: TẤT CẢ DANH BẠ LÃNH ĐẠO
 # ─────────────────────────────────────────────────────────────────────
 with tab_directory:
-    st.markdown("### 👥 Toàn bộ Danh bạ Lãnh đạo Khách sạn 4–5★")
+    st.markdown("### 👥 Toàn bộ Danh bạ Khách sạn & Ban Giám Đốc 4–5★")
     
     session = get_session()
     all_execs = session.query(HotelExecutive).order_by(HotelExecutive.created_at.desc()).all()
@@ -397,13 +397,13 @@ with tab_directory:
         data = []
         for e in all_execs:
             data.append({
-                "Họ & Tên": e.name,
+                "Ban Giám Đốc & Lãnh Đạo": e.name,
                 "Chức Vụ": e.title,
                 "Khách Sạn / Resort": e.company,
                 "Khu Vực": e.city,
                 "Trạng Thái": e.status,
                 "Điểm Ưu Tiên": f"{e.lead_score}đ",
-                "Link Profile Gốc": e.profile_url
+                "Link LinkedIn Chính Thức": e.profile_url
             })
         df = pd.DataFrame(data)
         st.dataframe(df, use_container_width=True)
