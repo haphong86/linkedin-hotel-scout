@@ -213,11 +213,12 @@ c4.metric("GIÁM ĐỐC SALES & MKT", dosm_count)
 
 st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
-# ── 3 TABS ĐIỀU KHIỂN CHÍNH ──────────────────────────────────────────
-tab_queue, tab_backlog, tab_sync = st.tabs([
+# ── 4 TABS ĐIỀU KHIỂN CHÍNH ──────────────────────────────────────────
+tab_queue, tab_backlog, tab_sync, tab_scanner = st.tabs([
     "🚀 TOP 20 HÔM NAY (KIỂM TRA LIVE/DIE)",
     "📋 HÀNG ĐỢI DỰ BỊ (#21+)",
-    "🔄 ĐỒNG BỘ & NẠP LÃNH ĐẠO MỚI"
+    "🔄 ĐỒNG BỘ & NẠP LÃNH ĐẠO MỚI",
+    "🔍 AUTO-SCAN LINK /IN/ THẬT"
 ])
 
 
@@ -372,3 +373,132 @@ with tab_sync:
         st.success(f"🎉 ĐÃ TỰ ĐỘNG NẠP THÀNH CÔNG TOÀN BỘ DANH BẠ LÃNH ĐẠO VIP (MỚI THÊM: +{added} HỒ SƠ)!")
         time.sleep(1.2)
         st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# TAB 4: AUTO-SCAN LINK /IN/ THẬT BẰNG PLAYWRIGHT
+# ─────────────────────────────────────────────────────────────────────
+with tab_scanner:
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#0D0D0D 0%,#0A0A0A 100%);border:1px solid #E50914;border-radius:4px;padding:20px 24px;margin-bottom:20px;">
+      <div style="font-size:10px;letter-spacing:2px;color:#E50914;font-weight:700;text-transform:uppercase;">TỰ ĐỘNG PHÁT HIỆN LINK /IN/ THẬT</div>
+      <div style="font-family:'Montserrat',sans-serif;font-size:22px;font-weight:700;color:#FFF;margin:6px 0;">🔍 Auto-Scan LinkedIn Profile URL</div>
+      <div style="font-size:12px;color:#999;">
+        Hệ thống dùng <b>Playwright</b> mở trang tìm kiếm LinkedIn → tự click người đầu tiên → lấy đúng link 
+        <code style="background:#1A0000;color:#E50914;padding:2px 6px;border-radius:3px;">/in/tên-mã/</code> thật.<br/>
+        <b>Yêu cầu:</b> Dán cookie <code>li_at</code> (phiên đăng nhập LinkedIn của anh) vào bên dưới.
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Hướng dẫn lấy cookie li_at
+    with st.expander("📖 Cách lấy Cookie li_at (chỉ làm 1 lần)"):
+        st.markdown("""
+        1. Mở **Chrome**, đăng nhập LinkedIn
+        2. Nhấn **F12** → tab **Application** → **Cookies** → **https://www.linkedin.com**
+        3. Tìm dòng **`li_at`** → Copy toàn bộ giá trị cột **Value**
+        4. Dán vào ô bên dưới
+        """)
+
+    li_at = st.text_input(
+        "🔑 Cookie li_at của anh:",
+        type="password",
+        placeholder="AQEDATxxxxxx... (paste cookie li_at vào đây)",
+        help="Cookie này chỉ dùng để mở trình duyệt LinkedIn trên máy anh, không được gửi đi đâu cả."
+    )
+
+    st.divider()
+
+    # Lấy danh sách lead còn dùng search URL
+    sess = get_session()
+    all_execs = sess.query(HotelExecutive).all()
+    search_url_leads = [
+        (e.id, e.name, e.profile_url)
+        for e in all_execs
+        if e.profile_url and "/search/results/" in e.profile_url
+    ]
+    direct_url_leads = [
+        (e.id, e.name, e.profile_url)
+        for e in all_execs
+        if e.profile_url and "/in/" in e.profile_url
+    ]
+    sess.close()
+
+    col_s1, col_s2 = st.columns(2)
+    col_s1.metric("Đang dùng Search URL (cần scan)", len(search_url_leads))
+    col_s2.metric("Đã có link /in/ trực tiếp", len(direct_url_leads))
+
+    if search_url_leads:
+        st.markdown("**Danh sách cần Auto-Scan:**")
+        for _, name, url in search_url_leads:
+            st.markdown(f"- **{name}** → `{url}`")
+
+        st.markdown("")
+
+        col_b1, col_b2 = st.columns(2)
+
+        with col_b1:
+            # Scan 1 người cụ thể
+            scan_names = [name for _, name, _ in search_url_leads]
+            chosen = st.selectbox("Scan từng người:", scan_names)
+            if st.button("🔍 SCAN NGƯỜI NÀY", use_container_width=True):
+                if not li_at:
+                    st.error("⚠️ Vui lòng nhập Cookie li_at trước!")
+                else:
+                    try:
+                        from engine.linkedin_scanner import scan_profile_url
+                        chosen_url = next(url for _, n, url in search_url_leads if n == chosen)
+                        with st.spinner(f"Đang mở LinkedIn tìm {chosen}..."):
+                            result = scan_profile_url(chosen_url, li_at, headless=True)
+                        if result["status"] == "ok":
+                            st.success(f"✅ TÌM THẤY: {result['profile_url']}")
+                            # Cập nhật DB
+                            s2 = get_session()
+                            exec_obj = s2.query(HotelExecutive).filter(HotelExecutive.name == chosen).first()
+                            if exec_obj:
+                                exec_obj.profile_url = result["profile_url"]
+                                s2.commit()
+                            s2.close()
+                            st.info("💾 Đã lưu link /in/ thật vào database!")
+                            time.sleep(0.8)
+                            st.rerun()
+                        else:
+                            st.warning(f"⚠️ {result['message']}")
+                    except Exception as e:
+                        st.error(f"Lỗi: {e}")
+
+        with col_b2:
+            # Scan toàn bộ
+            if st.button("🚀 SCAN TOÀN BỘ (AUTO)", type="primary", use_container_width=True):
+                if not li_at:
+                    st.error("⚠️ Vui lòng nhập Cookie li_at trước!")
+                else:
+                    try:
+                        from engine.linkedin_scanner import scan_profile_url
+                        progress = st.progress(0)
+                        status_txt = st.empty()
+                        total = len(search_url_leads)
+                        ok_count = 0
+                        for i, (lead_id, name, url) in enumerate(search_url_leads):
+                            status_txt.markdown(f"⏳ **[{i+1}/{total}]** Đang scan: **{name}**...")
+                            result = scan_profile_url(url, li_at, headless=True)
+                            if result["status"] == "ok":
+                                s2 = get_session()
+                                exec_obj = s2.query(HotelExecutive).filter(HotelExecutive.id == lead_id).first()
+                                if exec_obj:
+                                    exec_obj.profile_url = result["profile_url"]
+                                    s2.commit()
+                                s2.close()
+                                ok_count += 1
+                                status_txt.markdown(f"✅ **{name}** → `{result['profile_url']}`")
+                            else:
+                                status_txt.markdown(f"⚠️ **{name}** → {result['message']}")
+                            progress.progress((i + 1) / total)
+                            time.sleep(3)
+                        st.success(f"🎉 SCAN XONG! Đã cập nhật {ok_count}/{total} link /in/ thật vào database!")
+                        time.sleep(1.2)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Lỗi: {e}")
+    else:
+        st.success("🎉 Tất cả hồ sơ đã có link /in/ trực tiếp! Không cần scan thêm.")
