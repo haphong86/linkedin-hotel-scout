@@ -11,6 +11,7 @@ import requests
 from datetime import datetime, date
 from typing import List, Dict, Tuple
 from database.models import get_session, HotelExecutive, ConnectionLog, SystemSetting
+from scheduler.heartbeat_tracker import log_activity
 
 def get_setting(key: str, default: str = "") -> str:
     session = get_session()
@@ -64,8 +65,6 @@ def send_direct_connection(executive_id: int, li_at_cookie: str = None) -> Tuple
         session.close()
         return False, f"Đã đạt hạn ngạch tối đa trong ngày ({quota['max_daily']} kết nối/ngày)!"
 
-    cookie = li_at_cookie or get_setting("li_at_cookie", "")
-
     # Thực hiện ghi nhận trạng thái kết nối trực tiếp
     exec_obj.status = "Đã gửi kết bạn"
     exec_obj.invited_at = datetime.utcnow()
@@ -80,6 +79,9 @@ def send_direct_connection(executive_id: int, li_at_cookie: str = None) -> Tuple
     )
     session.add(log)
     session.commit()
-    session.close()
     
+    # Ghi nhận thời gian thực vào Activity Stream
+    log_activity("➕ Đã bấm kết bạn trực tiếp", f"{exec_obj.name} ({exec_obj.title} · {exec_obj.company})")
+    
+    session.close()
     return True, "Đã gửi lời mời kết bạn trực tiếp thành công!"

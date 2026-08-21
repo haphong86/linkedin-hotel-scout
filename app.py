@@ -2,6 +2,7 @@
 app.py — LinkedIn Hotel VIP Auto-Scout & Growth Bot (Hà Phong Visuals)
 Cơ chế: HÀNG ĐỢI 2 TẦNG (TOP 20 + DỰ BỊ #21+ ĐÔN LÊN TỰ ĐỘNG)
 Chế độ: CHỈ BẤM KẾT BẠN TRỰC TIẾP — TUYỆT ĐỐI KHÔNG GỬI TIN NHẮN SPAM
+Tích hợp: TIẾN TRÌNH THỜI GIAN THỰC 24/7 & ACTIVITY STREAM MONITOR
 Chạy: streamlit run app.py
 """
 import os
@@ -32,6 +33,11 @@ from engine.linkedin_bot import (
 )
 from engine.priority_queue import get_daily_queue_20, get_backlog_queue_21_plus
 from engine.telegram_notifier import send_telegram_daily_report
+from scheduler.heartbeat_tracker import get_heartbeat_status, log_activity
+from scheduler.background_worker import start_background_worker
+
+# Khởi động tiến trình ngầm
+start_background_worker()
 
 # ── CẤU HÌNH TRANG STREAMLIT ─────────────────────────────────────────
 st.set_page_config(
@@ -147,20 +153,13 @@ html, body, [class*="css"] {
   box-shadow: 0 4px 14px rgba(229, 9, 20, 0.4) !important;
 }
 
-/* Dataframe */
-[data-testid="stDataFrame"] {
-  border: 1px solid #222222 !important;
-  border-radius: 4px !important;
-}
-.stDataFrame thead th {
-  background: #141414 !important;
+/* Expander */
+.streamlit-expanderHeader {
+  background: #111111 !important;
+  border: 1px solid #282828 !important;
   color: #FFFFFF !important;
   font-weight: 600 !important;
-  border-bottom: 2px solid #E50914 !important;
 }
-.stDataFrame tbody tr { background: #0A0A0A !important; }
-.stDataFrame tbody tr:hover { background: #161616 !important; }
-.stDataFrame tbody td { color: #E0E0E0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -249,7 +248,7 @@ tab_queue, tab_backlog, tab_directory, tab_history = st.tabs([
     "🚀 TOP 20 HÔM NAY",
     "📋 DỰ BỊ (#21+)",
     "👥 TẤT CẢ DANH BẠ",
-    "📈 NHẬT KÝ & BÁO CÁO"
+    "📈 NHẬT KÝ & GIÁM SÁT 24/7"
 ])
 
 
@@ -257,6 +256,29 @@ tab_queue, tab_backlog, tab_directory, tab_history = st.tabs([
 # TAB 1: TOP 20 HÔM NAY (DIRECT CONNECT)
 # ─────────────────────────────────────────────────────────────────────
 with tab_queue:
+    # Khối trạng thái tiến trình thời gian thực (Activity Stream Expander)
+    hb = get_heartbeat_status()
+    with st.expander("📡 TIẾN TRÌNH THỜI GIAN THỰC & NHẬT KÝ HOẠT ĐỘNG GẦN NHẤT", expanded=True):
+        hb_col1, hb_col2 = st.columns([3, 1])
+        with hb_col1:
+            st.markdown(f"""
+            **Nhiệm vụ đang thực hiện:** ⚙️ *{hb.get('current_task', 'Đang giám sát và sẵn sàng chu kỳ quét mới')}*  
+            **Ghi nhận lần cuối:** `{hb.get('last_heartbeat', '—')}`
+            """)
+        with hb_col2:
+            if st.button("🔄 Làm mới trạng thái", key="refresh_monitor_btn", use_container_width=True, help="Cập nhật trạng thái hoạt động ngầm"):
+                st.rerun()
+
+        st.markdown("<div style='font-size:11px;color:#E50914;font-weight:bold;margin:8px 0 4px;'>📜 HOẠT ĐỘNG HỆ THỐNG GẦN ĐÂY (ACTIVITY STREAM):</div>", unsafe_allow_html=True)
+        activities = hb.get("recent_activities", [])
+        if activities:
+            for act in activities[:8]:
+                st.caption(f"• `{act}`")
+        else:
+            st.caption("• Hệ thống đang chạy giám sát 24/7...")
+
+    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+
     st.markdown("""
     <div style="background:linear-gradient(135deg, #121212 0%, #0A0A0A 100%); border:1px solid #E50914; border-radius:4px; padding:20px 24px; margin-bottom:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
