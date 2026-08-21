@@ -1,16 +1,18 @@
 """
 app.py — LinkedIn Hotel VIP Auto-Scout & Growth Bot (Hà Phong Visuals)
-Chế độ: CHỈ BẤM KẾT BẠN TRỰC TIẾP (DIRECT CONNECT — KHÔNG KÈM TIN NHẮN)
-Tone thiết kế: Đen — Đỏ — Trắng đồng bộ nhận diện thương hiệu
+Cơ chế: HÀNG ĐỢI 2 TẦNG (TOP 20 + DỰ BỊ #21+ ĐÔN LÊN TỰ ĐỘNG)
+Chế độ: CHỈ BẤM KẾT BẠN TRỰC TIẾP — TUYỆT ĐỐI KHÔNG GỬI TIN NHẮN SPAM
 Chạy: streamlit run app.py
 """
 import os
 import sys
 import time
 import pandas as pd
-import socket
+import streamlit as st
+from datetime import datetime, date
 
 # Ép buộc Socket phân giải IPv4 trên Railway/Linux Container
+import socket
 _orig_getaddrinfo = socket.getaddrinfo
 def _ipv4_only_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
     if family == 0 or family == socket.AF_UNSPEC:
@@ -22,15 +24,14 @@ def _ipv4_only_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
 
 socket.getaddrinfo = _ipv4_only_getaddrinfo
 
-import streamlit as st
-from datetime import datetime, date
-
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database.models import init_db, get_session, HotelExecutive, ConnectionLog, SystemSetting
 from engine.linkedin_bot import (
     get_daily_quota_status, send_direct_connection, get_setting, set_setting
 )
+from engine.priority_queue import get_daily_queue_20, get_backlog_queue_21_plus
+from engine.telegram_notifier import send_telegram_daily_report
 
 # ── CẤU HÌNH TRANG STREAMLIT ─────────────────────────────────────────
 st.set_page_config(
@@ -181,9 +182,9 @@ with st.sidebar:
 
     st.markdown("""
     <div style="margin-bottom:18px; text-align:center;">
-      <div style="font-size:9px;letter-spacing:2px;color:#888;text-transform:uppercase;">LinkedIn Direct Connect Bot</div>
+      <div style="font-size:9px;letter-spacing:2px;color:#888;text-transform:uppercase;">LinkedIn VIP Auto-Scout Bot</div>
       <div style="font-size:10px;color:#FFFFFF;background:#1A0506;border:1px solid #E50914;border-radius:4px;padding:4px 8px;margin-top:8px;font-weight:700;">
-        ⚡ CHẾ ĐỘ: KẾT BẠN TRỰC TIẾP
+        ⚡ CHẾ ĐỘ: KẾT BẠN TRỰC TIẾP (ANTI-BAN)
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -201,8 +202,8 @@ with st.sidebar:
     st.markdown('<p style="font-size:10px;letter-spacing:1.5px;color:#E50914;text-transform:uppercase;font-weight:700;">KHU VỰC ƯU TIÊN</p>', unsafe_allow_html=True)
     selected_cities = st.multiselect(
         "Thành phố",
-        options=["Đà Nẵng", "Hội An", "Huế", "Lăng Cô", "Nha Trang", "Phú Quốc", "Bình Thuận", "Quy Nhơn", "Đà Lạt"],
-        default=["Đà Nẵng", "Hội An", "Huế"]
+        options=["Đà Nẵng", "Hội An", "Huế", "Lăng Cô", "Nha Trang", "Cam Ranh", "Phú Quốc", "Phan Thiết", "Bình Thuận", "Quy Nhơn", "Phú Yên", "Đà Lạt"],
+        default=[]
     )
 
     st.divider()
@@ -215,6 +216,14 @@ with st.sidebar:
       <div style="font-size:9px; color:#666; margin-top:6px;">🛡️ Anti-Ban: Giãn cách 30s – 90s/lượt</div>
     </div>
     """, unsafe_allow_html=True)
+
+    st.divider()
+    if st.button("📱 BẮN BÁO CÁO TELEGRAM", use_container_width=True):
+        ok = send_telegram_daily_report()
+        if ok:
+            st.success("✅ Đã gửi báo cáo về Telegram!")
+        else:
+            st.warning("⚠️ Chưa nhận được Chat ID. Vui lòng mở Bot Telegram bấm /start!")
 
 
 # ── THỐNG KÊ TOP METRICS ─────────────────────────────────────────────
@@ -236,16 +245,16 @@ c5.metric("MARCOM / MARKETING", marcom_count)
 st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
 # ── 4 TABS ĐIỀU KHIỂN CHÍNH ──────────────────────────────────────────
-tab_queue, tab_directory, tab_config, tab_history = st.tabs([
-    "🚀 HÀNG ĐỢI HÔM NAY (TOP 20)",
-    "👥 DANH BẠ LÃNH ĐẠO (ĐÃ QUÉT)",
-    "⚙️ CẤU HÌNH & QUÉT MỚI",
-    "📈 NHẬT KÝ & TĂNG TRƯỞNG"
+tab_queue, tab_backlog, tab_directory, tab_history = st.tabs([
+    "🚀 TOP 20 HÔM NAY",
+    "📋 DỰ BỊ (#21+)",
+    "👥 TẤT CẢ DANH BẠ",
+    "📈 NHẬT KÝ & BÁO CÁO"
 ])
 
 
 # ─────────────────────────────────────────────────────────────────────
-# TAB 1: HÀNG ĐỢI HÔM NAY (TOP 20 - DIRECT CONNECT)
+# TAB 1: TOP 20 HÔM NAY (DIRECT CONNECT)
 # ─────────────────────────────────────────────────────────────────────
 with tab_queue:
     st.markdown("""
@@ -253,29 +262,22 @@ with tab_queue:
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
         <div>
           <div style="font-size:10px; letter-spacing:2px; color:#E50914; font-weight:700; text-transform:uppercase;">KẾT BẠN TRỰC TIẾP — KHÔNG GỬI TIN NHẮN</div>
-          <div style="font-family:'Montserrat',sans-serif; font-size:24px; font-weight:700; color:#FFF; margin:4px 0;">1-Click Direct Connect</div>
+          <div style="font-family:'Montserrat',sans-serif; font-size:24px; font-weight:700; color:#FFF; margin:4px 0;">Top 20 Lãnh Đạo Ưu Tiên Hôm Nay</div>
           <div style="font-size:12px; color:#999;">Tự động bấm kết bạn trực tiếp tới các General Manager, DOSM, Marcom Manager tại các resort & khách sạn 4–5★ hàng đầu.</div>
         </div>
         <div>
-          <div style="font-size:10px; color:#4a7c59; font-weight:700;">● CHẾ ĐỘ: DIRECT CONNECT (FAST & SAFE)</div>
+          <div style="font-size:10px; color:#4a7c59; font-weight:700;">● CHẾ ĐỘ: DIRECT CONNECT (ANTI-BAN)</div>
           <div style="font-size:11px; color:#888; margin-top:4px;">Giới hạn an toàn: <b>20 kết nối / ngày</b></div>
         </div>
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    session = get_session()
-    # Lấy danh sách hàng đợi Top 20 ưu tiên chưa gửi
-    query = session.query(HotelExecutive).filter(HotelExecutive.status == "Mới tìm thấy")
-    if selected_cities:
-        query = query.filter(HotelExecutive.city.in_(selected_cities))
-    
-    queue_leads = query.order_by(HotelExecutive.lead_score.desc()).limit(20).all()
-    session.close()
+    queue_leads = get_daily_queue_20(selected_cities)
 
     col_act1, col_act2 = st.columns([3, 1])
     with col_act1:
-        st.markdown(f"**Danh sách đề xuất hôm nay:** `{len(queue_leads)} lãnh đạo cấp cao`")
+        st.markdown(f"**Danh sách đề xuất hôm nay:** `{len(queue_leads)} lãnh đạo cấp cao` *(Khi kết nối 1 người, hàng đợi #21+ sẽ tự động đẩy bù lên)*")
     with col_act2:
         if st.button("🚀 BẮT ĐẦU BẤM KẾT BẠN TOP 20", type="primary", use_container_width=True):
             if not queue_leads:
@@ -286,34 +288,36 @@ with tab_queue:
                 success_count = 0
                 
                 for idx, lead in enumerate(queue_leads):
-                    status_box.markdown(f"⏳ **[{idx+1}/{len(queue_leads)}]** Đang bấm kết bạn trực tiếp tới: **{lead.name}** ({lead.title} · {lead.company})...")
-                    ok, msg = send_direct_connection(lead.id)
+                    status_box.markdown(f"⏳ **[{idx+1}/{len(queue_leads)}]** Đang bấm kết bạn trực tiếp tới: **{lead['name']}** ({lead['title']} · {lead['company']})...")
+                    ok, msg = send_direct_connection(lead["id"])
                     if ok:
                         success_count += 1
                     progress_bar.progress((idx + 1) / len(queue_leads))
                     time.sleep(1.0)
                 
                 st.success(f"🎉 ĐÃ HOÀN TẤT BẤM KẾT BẠN TRỰC TIẾP TỚI {success_count} LÃNH ĐẠO KHÁCH SẠN VIP!")
+                # Tự động gửi thông báo Telegram
+                send_telegram_daily_report()
                 time.sleep(1.5)
                 st.rerun()
 
     st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
 
     if not queue_leads:
-        st.info("✅ Bạn đã kết bạn hết danh sách hiện tại trong ngày. Hãy chuyển sang Tab 'Cấu Hình & Quét Mới' để quét thêm người mới!")
+        st.info("✅ Bạn đã kết bạn hết danh sách hiện tại trong ngày. Hãy chuyển sang Tab 'Dự Bị (#21+)' để xem danh sách chờ!")
     else:
-        for idx, lead in enumerate(queue_leads):
+        for lead in queue_leads:
             with st.container():
                 st.markdown(f"""
                 <div style="background:#111; border:1px solid #222; border-left:3px solid #E50914; border-radius:4px; padding:16px 20px; margin-bottom:12px;">
                   <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div>
-                      <div style="font-size:16px; font-weight:700; color:#FFF;">#{idx+1}. {lead.name}</div>
-                      <div style="font-size:13px; color:#E50914; font-weight:600; margin-top:2px;">{lead.title} · <span style="color:#FFF;">{lead.company}</span></div>
-                      <div style="font-size:11px; color:#888; margin-top:4px;">📍 {lead.location} | Điểm ưu tiên: <b style="color:#FFF;">{lead.lead_score}đ</b></div>
+                      <div style="font-size:16px; font-weight:700; color:#FFF;">#{lead['queue_index']}. {lead['name']} <span style="font-size:10px; color:#E50914; border:1px solid #E50914; padding:2px 6px; border-radius:3px; margin-left:8px;">{lead['priority_badge']}</span></div>
+                      <div style="font-size:13px; color:#E50914; font-weight:600; margin-top:2px;">{lead['title']} · <span style="color:#FFF;">{lead['company']}</span></div>
+                      <div style="font-size:11px; color:#888; margin-top:4px;">📍 {lead['location']} | Điểm ưu tiên: <b style="color:#FFF;">{lead['lead_score']}đ</b></div>
                     </div>
                     <div style="text-align:right;">
-                      <a href="{lead.profile_url}" target="_blank"
+                      <a href="{lead['profile_url']}" target="_blank"
                          style="display:inline-block; background:#E50914; color:#FFF; padding:8px 18px; border-radius:4px; font-size:12px; text-decoration:none; font-weight:700;">
                          ➕ Bấm Kết Bạn Ngay
                       </a>
@@ -324,7 +328,46 @@ with tab_queue:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# TAB 2: DANH BẠ LÃNH ĐẠO (ĐÃ QUÉT)
+# TAB 2: DỰ BỊ (#21+)
+# ─────────────────────────────────────────────────────────────────────
+with tab_backlog:
+    st.markdown("""
+    <div style="background:#111; border:1px solid #222; border-left:4px solid #FFA500; border-radius:4px; padding:16px 20px; margin-bottom:18px;">
+      <div style="font-size:15px; font-weight:700; color:#FFF;">📋 Hàng Đợi Dự Bị (Xếp hàng từ vị trí #21 trở đi)</div>
+      <div style="font-size:12px; color:#AAA; margin-top:4px;">
+        Toàn bộ các General Manager, DOSM, Marcom Manager đã được hệ thống quét sẵn. Khi bạn bấm kết nối 1 người ở Tab 1, người đứng đầu danh sách này sẽ <b>tự động được đẩy bù lên Top 20</b>.
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    backlog_leads = get_backlog_queue_21_plus(selected_cities, limit=100)
+    st.markdown(f"**Tổng số lãnh đạo đang xếp hàng dự bị:** `{len(backlog_leads)} người`")
+
+    if not backlog_leads:
+        st.info("Hàng đợi dự bị hiện đang trống.")
+    else:
+        for lead in backlog_leads:
+            with st.container():
+                st.markdown(f"""
+                <div style="background:#0D0D0D; border:1px solid #222; border-radius:4px; padding:12px 18px; margin-bottom:8px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <div>
+                      <div style="font-size:14px; font-weight:700; color:#DDD;">#{lead['queue_index']}. {lead['name']} <span style="font-size:9px; color:#888; border:1px solid #444; padding:2px 5px; border-radius:3px; margin-left:6px;">{lead['priority_badge']}</span></div>
+                      <div style="font-size:12px; color:#BBB; margin-top:2px;">{lead['title']} · <b style="color:#FFF;">{lead['company']}</b> ({lead['city']})</div>
+                    </div>
+                    <div>
+                      <a href="{lead['profile_url']}" target="_blank"
+                         style="display:inline-block; background:#1A1A1A; border:1px solid #444; color:#FFF; padding:5px 12px; border-radius:4px; font-size:11px; text-decoration:none; font-weight:600;">
+                         🔗 Xem Profile
+                      </a>
+                    </div>
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# TAB 3: TẤT CẢ DANH BẠ LÃNH ĐẠO
 # ─────────────────────────────────────────────────────────────────────
 with tab_directory:
     st.markdown("### 👥 Toàn bộ Danh bạ Lãnh đạo Khách sạn 4–5★")
@@ -352,40 +395,28 @@ with tab_directory:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# TAB 3: CẤU HÌNH & QUÉT MỚI
-# ─────────────────────────────────────────────────────────────────────
-with tab_config:
-    st.markdown("### ⚙️ Cấu hình Hạn ngạch & Quét bổ sung")
-    
-    current_max = get_setting("max_daily_connections", "20")
-    new_max = st.selectbox("Hạn ngạch kết bạn tối đa mỗi ngày (Khuyến nghị 15–20):", options=["10", "15", "20", "25"], index=2 if current_max=="20" else 1)
-    
-    if st.button("💾 LƯU HẠN NGẠCH", use_container_width=True):
-        set_setting("max_daily_connections", new_max)
-        st.success(f"Đã cập nhật hạn ngạch: {new_max} kết nối/ngày!")
-
-    st.divider()
-    st.markdown("#### 🔍 Quét bổ sung Lãnh đạo Khách sạn mới:")
-    if st.button("🌐 QUÉT THÊM LÃNH ĐẠO GM/DOSM TỪ GOOGLE & LINKEDIN", type="primary", use_container_width=True):
-        from engine.linkedin_scraper import scan_and_save_executives
-        with st.spinner("Đang tìm kiếm trên mạng lưới dữ liệu..."):
-            saved = scan_and_save_executives(selected_cities)
-            st.success(f"🎉 Đã tìm thấy và bổ sung thêm +{saved} lãnh đạo khách sạn mới vào danh bạ!")
-            time.sleep(1)
-            st.rerun()
-
-
-# ─────────────────────────────────────────────────────────────────────
-# TAB 4: NHẬT KÝ & TĂNG TRƯỞNG
+# TAB 4: NHẬT KÝ & BÁO CÁO TELEGRAM
 # ─────────────────────────────────────────────────────────────────────
 with tab_history:
-    st.markdown("### 📈 Nhật ký Kết nối & Tăng trưởng Mạng lưới")
+    st.markdown("### 📈 Nhật ký Kết nối & Báo cáo Tăng trưởng")
+    
+    col_t1, col_t2 = st.columns([3, 1])
+    with col_t1:
+        st.markdown("Bản tin thống kê tự động bắn qua Telegram mỗi ngày vào lúc 21:00.")
+    with col_t2:
+        if st.button("📲 BẮN BÁO CÁO TELEGRAM NGAY", type="primary", use_container_width=True):
+            ok = send_telegram_daily_report()
+            if ok:
+                st.success("✅ Đã gửi báo cáo về Telegram!")
+            else:
+                st.warning("⚠️ Chưa cấu hình hoặc chưa start Bot Telegram.")
+
     session = get_session()
     logs = session.query(ConnectionLog).order_by(ConnectionLog.sent_at.desc()).limit(100).all()
     session.close()
 
     if not logs:
-        st.info("Chưa có lịch sử kết bạn nào được thực hiện.")
+        st.info("Chưa có lịch sử kết bạn nào được thực hiện hôm nay.")
     else:
         log_data = []
         for l in logs:
