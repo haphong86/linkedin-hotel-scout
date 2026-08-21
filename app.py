@@ -1,8 +1,8 @@
 """
 app.py — LinkedIn Hotel VIP Auto-Scout & Growth Bot (Hà Phong Visuals)
-Cơ chế: HÀNG ĐỢI 2 TẦNG (TOP 20 + DỰ BỊ #21+ ĐÔN LÊN TỰ ĐỘNG)
+Cơ chế: TỰ ĐỘNG HÓA 24/7/365 TRÊN CLOUD (AUTO-PILOT ACTIVE)
+Cơ chế hàng đợi: HÀNG ĐỢI 2 TẦNG (TOP 20 + DỰ BỊ #21+ ĐÔN LÊN TỰ ĐỘNG)
 Chế độ: CHỈ BẤM KẾT BẠN TRỰC TIẾP — TUYỆT ĐỐI KHÔNG GỬI TIN NHẮN SPAM
-Tích hợp: TIẾN TRÌNH THỜI GIAN THỰC 24/7 & ACTIVITY STREAM MONITOR
 Chạy: streamlit run app.py
 """
 import os
@@ -34,14 +34,14 @@ from engine.linkedin_bot import (
 from engine.priority_queue import get_daily_queue_20, get_backlog_queue_21_plus, get_smart_linkedin_url
 from engine.telegram_notifier import send_telegram_daily_report
 from scheduler.heartbeat_tracker import get_heartbeat_status, log_activity
-from scheduler.background_worker import start_background_worker
+from scheduler.background_worker import start_background_worker, is_autopilot_active, set_autopilot_status, execute_daily_autopilot_cycle
 
-# Khởi động tiến trình ngầm
+# Khởi động tiến trình ngầm 24/7/365
 start_background_worker()
 
 # ── CẤU HÌNH TRANG STREAMLIT ─────────────────────────────────────────
 st.set_page_config(
-    page_title="Hà Phong Visuals · LinkedIn Hotel Direct Connect Bot",
+    page_title="Hà Phong Visuals · LinkedIn Auto-Pilot 24/7/365",
     page_icon="👁️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -152,14 +152,6 @@ html, body, [class*="css"] {
   font-weight: 700 !important;
   box-shadow: 0 4px 14px rgba(229, 9, 20, 0.4) !important;
 }
-
-/* Expander */
-.streamlit-expanderHeader {
-  background: #111111 !important;
-  border: 1px solid #282828 !important;
-  color: #FFFFFF !important;
-  font-weight: 600 !important;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -179,11 +171,13 @@ with st.sidebar:
         </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("""
+    autopilot_on = is_autopilot_active()
+    status_badge = "🟢 ĐANG CHẠY 24/7/365" if autopilot_on else "⚪ TẠM DỪNG (THỦ CÔNG)"
+    st.markdown(f"""
     <div style="margin-bottom:18px; text-align:center;">
-      <div style="font-size:9px;letter-spacing:2px;color:#888;text-transform:uppercase;">LinkedIn VIP Auto-Scout Bot</div>
+      <div style="font-size:9px;letter-spacing:2px;color:#888;text-transform:uppercase;">Hệ Thống Auto-Pilot Cloud</div>
       <div style="font-size:10px;color:#FFFFFF;background:#1A0506;border:1px solid #E50914;border-radius:4px;padding:4px 8px;margin-top:8px;font-weight:700;">
-        ⚡ CHẾ ĐỘ: KẾT BẠN TRỰC TIẾP (ANTI-BAN)
+        ⚡ {status_badge}
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -198,12 +192,11 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     st.divider()
-    st.markdown('<p style="font-size:10px;letter-spacing:1.5px;color:#E50914;text-transform:uppercase;font-weight:700;">KHU VỰC ƯU TIÊN</p>', unsafe_allow_html=True)
-    selected_cities = st.multiselect(
-        "Thành phố",
-        options=["Đà Nẵng", "Hội An", "Huế", "Lăng Cô", "Nha Trang", "Cam Ranh", "Phú Quốc", "Phan Thiết", "Bình Thuận", "Quy Nhơn", "Phú Yên", "Đà Lạt"],
-        default=[]
-    )
+    st.markdown('<p style="font-size:10px;letter-spacing:1.5px;color:#E50914;text-transform:uppercase;font-weight:700;">ĐIỀU KHIỂN AUTO-PILOT 24/7/365</p>', unsafe_allow_html=True)
+    toggle_val = st.toggle("Bật Tự Động Hóa 24/7/365", value=autopilot_on, help="Tự động gửi 15-20 kết nối mỗi ngày và báo cáo về Telegram")
+    if toggle_val != autopilot_on:
+        set_autopilot_status(toggle_val)
+        st.rerun()
 
     st.divider()
     st.markdown('<p style="font-size:10px;letter-spacing:1.5px;color:#E50914;text-transform:uppercase;font-weight:700;">HẠN NGẠCH AN TOÀN TRONG NGÀY</p>', unsafe_allow_html=True)
@@ -229,8 +222,8 @@ with st.sidebar:
 session = get_session()
 total_vip = session.query(HotelExecutive).count()
 total_invited = session.query(HotelExecutive).filter(HotelExecutive.status == "Đã gửi kết bạn").count()
-gm_count = session.query(HotelExecutive).filter(HotelExecutive.title.like("%General Manager%") | HotelExecutive.title.like("%GM%")).count()
-dosm_count = session.query(HotelExecutive).filter(HotelExecutive.title.like("%Director%") | HotelExecutive.title.like("%DOSM%")).count()
+gm_count = session.query(HotelExecutive).filter(HotelExecutive.title.like("%General Manager%") | HotelExecutive.title.like("%GM%") | HotelExecutive.title.like("%Managing Director%")).count()
+dosm_count = session.query(HotelExecutive).filter(HotelExecutive.title.like("%Director%") | HotelExecutive.title.like("%DOSM%") | HotelExecutive.title.like("%Commercial%")).count()
 marcom_count = session.query(HotelExecutive).filter(HotelExecutive.title.like("%Marketing%") | HotelExecutive.title.like("%Marcom%")).count()
 session.close()
 
@@ -256,17 +249,17 @@ tab_queue, tab_backlog, tab_directory, tab_history = st.tabs([
 # TAB 1: TOP 20 HÔM NAY (DIRECT CONNECT)
 # ─────────────────────────────────────────────────────────────────────
 with tab_queue:
-    # Khối trạng thái tiến trình thời gian thực (Activity Stream Expander)
     hb = get_heartbeat_status()
-    with st.expander("📡 TIẾN TRÌNH THỜI GIAN THỰC & NHẬT KÝ HOẠT ĐỘNG GẦN NHẤT", expanded=True):
+    with st.expander("📡 TIẾN TRÌNH THỜI GIAN THỰC & NHẬT KÝ HOẠT ĐỘNG 24/7/365", expanded=True):
         hb_col1, hb_col2 = st.columns([3, 1])
         with hb_col1:
             st.markdown(f"""
-            **Nhiệm vụ đang thực hiện:** ⚙️ *{hb.get('current_task', 'Đang giám sát và sẵn sàng chu kỳ quét mới')}*  
-            **Ghi nhận lần cuối:** `{hb.get('last_heartbeat', '—')}`
+            **Trạng thái Auto-Pilot:** ⚙️ *{hb.get('current_task', 'Đang giám sát và sẵn sàng chu kỳ quét mới')}*  
+            **Ghi nhận lần cuối:** `{hb.get('last_heartbeat', '—')}`  
+            **Chế độ:** `🟢 Tự Động Hóa 24/7/365 (Chạy ngầm vĩnh cửu trên Cloud)`
             """)
         with hb_col2:
-            if st.button("🔄 Làm mới trạng thái", key="refresh_monitor_btn", use_container_width=True, help="Cập nhật trạng thái hoạt động ngầm"):
+            if st.button("🔄 Làm mới trạng thái", key="refresh_monitor_btn", use_container_width=True):
                 st.rerun()
 
         st.markdown("<div style='font-size:11px;color:#E50914;font-weight:bold;margin:8px 0 4px;'>📜 HOẠT ĐỘNG HỆ THỐNG GẦN ĐÂY (ACTIVITY STREAM):</div>", unsafe_allow_html=True)
@@ -275,7 +268,7 @@ with tab_queue:
             for act in activities[:8]:
                 st.caption(f"• `{act}`")
         else:
-            st.caption("• Hệ thống đang chạy giám sát 24/7...")
+            st.caption("• Hệ thống đang chạy giám sát 24/7/365...")
 
     st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
 
@@ -283,25 +276,25 @@ with tab_queue:
     <div style="background:linear-gradient(135deg, #121212 0%, #0A0A0A 100%); border:1px solid #E50914; border-radius:4px; padding:20px 24px; margin-bottom:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
         <div>
-          <div style="font-size:10px; letter-spacing:2px; color:#E50914; font-weight:700; text-transform:uppercase;">KẾT BẠN TRỰC TIẾP — KHÔNG GỬI TIN NHẮN</div>
+          <div style="font-size:10px; letter-spacing:2px; color:#E50914; font-weight:700; text-transform:uppercase;">1-CLICK MASTER AUTO-PILOT 24/7/365</div>
           <div style="font-family:'Montserrat',sans-serif; font-size:24px; font-weight:700; color:#FFF; margin:4px 0;">Top 20 Lãnh Đạo Ưu Tiên Hôm Nay</div>
-          <div style="font-size:12px; color:#999;">Tự động bấm kết bạn trực tiếp tới các General Manager, DOSM, Marcom Manager tại các resort & khách sạn 4–5★ hàng đầu.</div>
+          <div style="font-size:12px; color:#999;">Hệ thống tự động chạy ngầm mỗi ngày 24/7/365 trên Railway: Tự động kết nối 20 sếp lớn ➔ Tự động đôn hàng đợi ➔ Bắn báo cáo Telegram.</div>
         </div>
         <div>
-          <div style="font-size:10px; color:#4a7c59; font-weight:700;">● CHẾ ĐỘ: DIRECT CONNECT (ANTI-BAN)</div>
+          <div style="font-size:10px; color:#4a7c59; font-weight:700;">● CLOUD SERVER: ACTIVE 24/7/365</div>
           <div style="font-size:11px; color:#888; margin-top:4px;">Giới hạn an toàn: <b>20 kết nối / ngày</b></div>
         </div>
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    queue_leads = get_daily_queue_20(selected_cities)
+    queue_leads = get_daily_queue_20()
 
     col_act1, col_act2 = st.columns([3, 1])
     with col_act1:
-        st.markdown(f"**Danh sách đề xuất hôm nay:** `{len(queue_leads)} lãnh đạo cấp cao` *(Khi kết nối 1 người, hàng đợi #21+ sẽ tự động đẩy bù lên)*")
+        st.markdown(f"**Hàng đợi hôm nay:** `{len(queue_leads)} lãnh đạo VIP` *(Khi kết nối, hệ thống tự động đẩy người #21 lên bù)*")
     with col_act2:
-        if st.button("🚀 BẮT ĐẦU BẤM KẾT BẠN TOP 20", type="primary", use_container_width=True):
+        if st.button("🚀 BẮT ĐẦU AUTO-PILOT NGAY BÂY GIỜ", type="primary", use_container_width=True):
             if not queue_leads:
                 st.warning("Hiện không còn người nào trong hàng đợi chưa kết bạn!")
             else:
@@ -310,15 +303,14 @@ with tab_queue:
                 success_count = 0
                 
                 for idx, lead in enumerate(queue_leads):
-                    status_box.markdown(f"⏳ **[{idx+1}/{len(queue_leads)}]** Đang bấm kết bạn trực tiếp tới: **{lead['name']}** ({lead['title']} · {lead['company']})...")
+                    status_box.markdown(f"⏳ **[{idx+1}/{len(queue_leads)}]** Đang kết nối trực tiếp tới: **{lead['name']}** ({lead['title']} · {lead['company']})...")
                     ok, msg = send_direct_connection(lead["id"])
                     if ok:
                         success_count += 1
                     progress_bar.progress((idx + 1) / len(queue_leads))
                     time.sleep(1.0)
                 
-                st.success(f"🎉 ĐÃ HOÀN TẤT BẤM KẾT BẠN TRỰC TIẾP TỚI {success_count} LÃNH ĐẠO KHÁCH SẠN VIP!")
-                # Tự động gửi thông báo Telegram
+                st.success(f"🎉 ĐÃ HOÀN TẤT KẾT NỐI TỰ ĐỘNG TỚI {success_count} LÃNH ĐẠO VIP!")
                 send_telegram_daily_report()
                 time.sleep(1.5)
                 st.rerun()
@@ -362,7 +354,7 @@ with tab_backlog:
     </div>
     """, unsafe_allow_html=True)
 
-    backlog_leads = get_backlog_queue_21_plus(selected_cities, limit=100)
+    backlog_leads = get_backlog_queue_21_plus(limit=200)
     st.markdown(f"**Tổng số lãnh đạo đang xếp hàng dự bị:** `{len(backlog_leads)} người`")
 
     if not backlog_leads:
@@ -420,7 +412,7 @@ with tab_directory:
 # TAB 4: NHẬT KÝ & BÁO CÁO TELEGRAM
 # ─────────────────────────────────────────────────────────────────────
 with tab_history:
-    st.markdown("### 📈 Nhật ký Kết nối & Báo cáo Tăng trưởng")
+    st.markdown("### 📈 Nhật ký Kết nối & Báo cáo Tăng trưởng 24/7/365")
     
     col_t1, col_t2 = st.columns([3, 1])
     with col_t1:
