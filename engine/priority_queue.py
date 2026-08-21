@@ -1,25 +1,29 @@
 """
 engine/priority_queue.py — Hệ thống Hàng đợi 2 Tầng (Top 20 + Dự Bị 21+ Auto-Promotion)
-Tích hợp Smart LinkedIn Real Search Protocol
+Tích hợp Smart LinkedIn Direct Name Search + Google Direct Link
 """
 import re
 import urllib.parse
 from typing import List, Dict
 from database.models import get_session, HotelExecutive
 
-def get_smart_linkedin_url(name: str, company: str, profile_url_or_keyword: str = "") -> str:
-    """Tạo link LinkedIn Search chuẩn xác tuyệt đối — Tìm ra người thật ngay tức khắc"""
-    if profile_url_or_keyword and profile_url_or_keyword.startswith("http"):
-        return profile_url_or_keyword
-    
-    # Rút gọn các từ chung để LinkedIn People Search chính xác 100%
-    clean_comp = re.sub(r'\b(Hotels?|Resorts?|Villas?|Spa|Beach|Premier|Villas? & Spa|Grand|By Fusion|Central Boutique)\b', '', company, flags=re.I).strip()
-    clean_comp = ' '.join(clean_comp.split()[:3])
-    clean_name = re.sub(r'\(.*?\)', '', name).strip()  # Bỏ ngoặc đơn nếu có
-    
-    search_keyword = f"{clean_name} {clean_comp}".strip()
-    return f"https://www.linkedin.com/search/results/people/?keywords={urllib.parse.quote(search_keyword)}"
+def clean_person_name(name: str) -> str:
+    """Loại bỏ ký tự thừa trong tên để tìm kiếm người thật 100%"""
+    clean = re.sub(r'\(.*?\)', '', name).strip()
+    return clean
 
+def get_linkedin_people_url(name: str) -> str:
+    """Tạo link LinkedIn Search theo Tên Lãnh Đạo (Ra ngay hồ sơ 100%)"""
+    name_clean = clean_person_name(name)
+    return f"https://www.linkedin.com/search/results/people/?keywords={urllib.parse.quote(name_clean)}"
+
+def get_google_xray_url(name: str, company: str) -> str:
+    """Tạo link Google X-Ray dẫn thẳng tới Profile LinkedIn chính xác"""
+    name_clean = clean_person_name(name)
+    comp_clean = re.sub(r'\b(Hotels?|Resorts?|Villas?|Spa|Beach|Premier|By Fusion)\b', '', company, flags=re.I).strip()
+    comp_clean = ' '.join(comp_clean.split()[:2])
+    query = f'site:linkedin.com/in "{name_clean}" {comp_clean}'
+    return f"https://www.google.com/search?q={urllib.parse.quote(query)}"
 
 def get_prioritized_executives(selected_cities: List[str] = None, limit: int = 20, offset: int = 0) -> List[Dict]:
     """Lấy danh sách lãnh đạo chưa kết bạn theo thứ tự ưu tiên Lead Score"""
@@ -51,7 +55,8 @@ def get_prioritized_executives(selected_cities: List[str] = None, limit: int = 2
         else:
             badge = "⚪ SALES MANAGER"
 
-        smart_url = get_smart_linkedin_url(e.name, e.company, e.profile_url)
+        linkedin_url = get_linkedin_people_url(e.name)
+        google_url = get_google_xray_url(e.name, e.company)
 
         result.append({
             "queue_index": queue_idx,
@@ -61,7 +66,8 @@ def get_prioritized_executives(selected_cities: List[str] = None, limit: int = 2
             "company": e.company,
             "city": e.city,
             "location": e.location,
-            "profile_url": smart_url,
+            "linkedin_url": linkedin_url,
+            "google_url": google_url,
             "headline": e.headline,
             "lead_score": e.lead_score,
             "priority_badge": badge,
@@ -73,10 +79,8 @@ def get_prioritized_executives(selected_cities: List[str] = None, limit: int = 2
 
 
 def get_daily_queue_20(selected_cities: List[str] = None) -> List[Dict]:
-    """Lấy Top 20 lãnh đạo cao nhất hôm nay"""
     return get_prioritized_executives(selected_cities=selected_cities, limit=20, offset=0)
 
 
 def get_backlog_queue_21_plus(selected_cities: List[str] = None, limit: int = 100) -> List[Dict]:
-    """Lấy danh sách dự bị từ người thứ 21 trở đi"""
     return get_prioritized_executives(selected_cities=selected_cities, limit=limit, offset=20)

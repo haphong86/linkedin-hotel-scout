@@ -31,7 +31,7 @@ from database.models import init_db, get_session, HotelExecutive, ConnectionLog,
 from engine.linkedin_bot import (
     get_daily_quota_status, send_direct_connection, get_setting, set_setting
 )
-from engine.priority_queue import get_daily_queue_20, get_backlog_queue_21_plus, get_smart_linkedin_url
+from engine.priority_queue import get_daily_queue_20, get_backlog_queue_21_plus, get_linkedin_people_url, get_google_xray_url
 from engine.telegram_notifier import send_telegram_daily_report
 from scheduler.heartbeat_tracker import get_heartbeat_status, log_activity
 from scheduler.background_worker import start_background_worker, is_autopilot_active, set_autopilot_status, execute_daily_autopilot_cycle
@@ -222,8 +222,8 @@ with st.sidebar:
 session = get_session()
 total_vip = session.query(HotelExecutive).count()
 total_invited = session.query(HotelExecutive).filter(HotelExecutive.status == "Đã gửi kết bạn").count()
-gm_count = session.query(HotelExecutive).filter(HotelExecutive.title.like("%General Manager%") | HotelExecutive.title.like("%GM%") | HotelExecutive.title.like("%Managing Director%")).count()
-dosm_count = session.query(HotelExecutive).filter(HotelExecutive.title.like("%Director%") | HotelExecutive.title.like("%DOSM%") | HotelExecutive.title.like("%Commercial%")).count()
+gm_count = session.query(HotelExecutive).filter(HotelExecutive.title.like("%General Manager%") | HotelExecutive.title.like("%GM%") | HotelExecutive.title.like("%Director%")).count()
+dosm_count = session.query(HotelExecutive).filter(HotelExecutive.title.like("%Sales%") | HotelExecutive.title.like("%DOSM%") | HotelExecutive.title.like("%Commercial%")).count()
 marcom_count = session.query(HotelExecutive).filter(HotelExecutive.title.like("%Marketing%") | HotelExecutive.title.like("%Marcom%")).count()
 session.close()
 
@@ -330,10 +330,14 @@ with tab_queue:
                       <div style="font-size:13px; color:#E50914; font-weight:600; margin-top:2px;">{lead['title']} · <span style="color:#FFF;">{lead['company']}</span></div>
                       <div style="font-size:11px; color:#888; margin-top:4px;">📍 {lead['location']} | Điểm ưu tiên: <b style="color:#FFF;">{lead['lead_score']}đ</b></div>
                     </div>
-                    <div style="text-align:right;">
-                      <a href="{lead['profile_url']}" target="_blank"
-                         style="display:inline-block; background:#E50914; color:#FFF; padding:8px 18px; border-radius:4px; font-size:12px; text-decoration:none; font-weight:700;">
-                         ➕ Bấm Kết Bạn Ngay
+                    <div style="text-align:right; display:flex; gap:8px;">
+                      <a href="{lead['linkedin_url']}" target="_blank"
+                         style="display:inline-block; background:#E50914; color:#FFF; padding:8px 16px; border-radius:4px; font-size:12px; text-decoration:none; font-weight:700;">
+                         ➕ Bấm Kết Bạn (LinkedIn)
+                      </a>
+                      <a href="{lead['google_url']}" target="_blank"
+                         style="display:inline-block; background:#1C1C1C; border:1px solid #444; color:#DDD; padding:8px 14px; border-radius:4px; font-size:12px; text-decoration:none; font-weight:600;">
+                         🔍 Xem Trên Google
                       </a>
                     </div>
                   </div>
@@ -369,10 +373,14 @@ with tab_backlog:
                       <div style="font-size:14px; font-weight:700; color:#DDD;">#{lead['queue_index']}. {lead['name']} <span style="font-size:9px; color:#888; border:1px solid #444; padding:2px 5px; border-radius:3px; margin-left:6px;">{lead['priority_badge']}</span></div>
                       <div style="font-size:12px; color:#BBB; margin-top:2px;">{lead['title']} · <b style="color:#FFF;">{lead['company']}</b> ({lead['city']})</div>
                     </div>
-                    <div>
-                      <a href="{lead['profile_url']}" target="_blank"
-                         style="display:inline-block; background:#1A1A1A; border:1px solid #444; color:#FFF; padding:5px 12px; border-radius:4px; font-size:11px; text-decoration:none; font-weight:600;">
-                         🔗 Xem Profile
+                    <div style="display:flex; gap:6px;">
+                      <a href="{lead['linkedin_url']}" target="_blank"
+                         style="display:inline-block; background:#E50914; color:#FFF; padding:6px 12px; border-radius:4px; font-size:11px; text-decoration:none; font-weight:700;">
+                         ➕ Kết Bạn
+                      </a>
+                      <a href="{lead['google_url']}" target="_blank"
+                         style="display:inline-block; background:#1A1A1A; border:1px solid #444; color:#FFF; padding:6px 12px; border-radius:4px; font-size:11px; text-decoration:none; font-weight:600;">
+                         🔍 Xem Profile
                       </a>
                     </div>
                   </div>
@@ -402,7 +410,8 @@ with tab_directory:
                 "Khu Vực": e.city,
                 "Trạng Thái": e.status,
                 "Điểm Ưu Tiên": f"{e.lead_score}đ",
-                "Link Profile": get_smart_linkedin_url(e.name, e.company, e.profile_url)
+                "Link LinkedIn": get_linkedin_people_url(e.name),
+                "Link Google": get_google_xray_url(e.name, e.company)
             })
         df = pd.DataFrame(data)
         st.dataframe(df, use_container_width=True)
