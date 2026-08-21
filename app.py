@@ -213,12 +213,13 @@ c4.metric("GIÁM ĐỐC SALES & MKT", dosm_count)
 
 st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
-# ── 4 TABS ĐIỀU KHIỂN CHÍNH ──────────────────────────────────────────
-tab_queue, tab_backlog, tab_sync, tab_scanner = st.tabs([
+# ── 5 TABS ĐIỀU KHIỂN CHÍNH ──────────────────────────────────────────
+tab_queue, tab_backlog, tab_sync, tab_scanner, tab_bulk = st.tabs([
     "🚀 TOP 20 HÔM NAY (KIỂM TRA LIVE/DIE)",
     "📋 HÀNG ĐỢI DỰ BỊ (#21+)",
     "🔄 ĐỒNG BỘ & NẠP LÃNH ĐẠO MỚI",
-    "🔍 AUTO-SCAN LINK /IN/ THẬT"
+    "🔍 AUTO-SCAN LINK /IN/ THẬT",
+    "🌐 BULK SCAN TOÀN BỘ GM/DOSM"
 ])
 
 
@@ -610,3 +611,113 @@ with tab_scanner:
                         st.error(f"Lỗi: {e}")
     else:
         st.success("🎉 Tất cả hồ sơ đã có link /in/ trực tiếp! Không cần scan thêm.")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# TAB 5: BULK SCAN TOÀN BỘ GM / DOSM / MARCOM TRÊN LINKEDIN
+# ─────────────────────────────────────────────────────────────────────
+with tab_bulk:
+    from engine.linkedin_bulk_scanner import SEARCH_TARGETS
+
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#0D0D0D,#080808);border:1px solid #E50914;border-radius:4px;padding:20px 24px;margin-bottom:20px;">
+      <div style="font-size:10px;letter-spacing:2px;color:#E50914;font-weight:700;text-transform:uppercase;">TÌM KIẾM TỰ ĐỘNG HÀNG LOẠT</div>
+      <div style="font-family:'Montserrat',sans-serif;font-size:22px;font-weight:700;color:#FFF;margin:6px 0;">🌐 Bulk Scan: Toàn Bộ GM · DOSM · Marcom Trên LinkedIn</div>
+      <div style="font-size:12px;color:#999;">
+        Hệ thống tự động tìm kiếm theo <b>chức danh × thành phố × thương hiệu</b> trên LinkedIn,
+        thu thập toàn bộ link <code style="color:#E50914;">/in/</code> thật rồi nạp vào hàng đợi kết bạn.
+        Không giới hạn số người — càng nhiều query càng tìm được nhiều sếp.
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Thống kê số query hiện tại
+    col_bk1, col_bk2, col_bk3 = st.columns(3)
+    col_bk1.metric("Số bộ tìm kiếm (query)", len(SEARCH_TARGETS))
+    col_bk2.metric("Trang / query", "3 trang × 10 kết quả")
+    col_bk3.metric("Ước tính tìm được", f"~{len(SEARCH_TARGETS) * 30}+ hồ sơ")
+
+    st.markdown("")
+
+    # Xem danh sách query
+    with st.expander(f"📋 Xem {len(SEARCH_TARGETS)} bộ tìm kiếm sẽ chạy"):
+        for i, (title, location) in enumerate(SEARCH_TARGETS, 1):
+            st.markdown(f"`{i:02d}.` **{title}** · {location}")
+
+    st.divider()
+
+    # Cookie input
+    bulk_li_at = st.text_input(
+        "🔑 Cookie li_at:",
+        type="password",
+        placeholder="AQEDATxxxxxx...",
+        key="bulk_li_at_input"
+    )
+
+    col_opt1, col_opt2 = st.columns(2)
+    with col_opt1:
+        max_pages = st.slider("Số trang / query (nhiều hơn = tìm được nhiều hơn):", 1, 10, 3)
+    with col_opt2:
+        st.markdown("")
+        st.markdown("")
+        headless_mode = st.checkbox("Chạy ẩn (không hiện Chrome)", value=True)
+
+    st.markdown("")
+
+    if st.button("🚀 BẮT ĐẦU BULK SCAN TOÀN BỘ", type="primary", use_container_width=True):
+        if not bulk_li_at:
+            st.error("❌ Vui lòng nhập Cookie li_at!")
+        else:
+            from engine.linkedin_bulk_scanner import bulk_search_linkedin
+
+            progress_bar = st.progress(0)
+            status_txt = st.empty()
+            result_box = st.empty()
+
+            found_count = 0
+            added_count = 0
+
+            def on_progress(qi, total, label):
+                progress_bar.progress(qi / total if total > 0 else 0)
+                status_txt.markdown(f"⏳ **[{qi+1}/{total}]** Đang tìm: **{label}**...")
+
+            with st.spinner("Đang chạy Bulk Scan LinkedIn..."):
+                results = bulk_search_linkedin(
+                    li_at_cookie=bulk_li_at,
+                    max_pages_per_query=max_pages,
+                    progress_callback=on_progress,
+                    headless=headless_mode
+                )
+
+            progress_bar.progress(1.0)
+            status_txt.markdown(f"✅ Scan xong! Tìm thấy **{len(results)}** profile LinkedIn")
+
+            # Lưu vào DB — chỉ thêm URL chưa có
+            sess_bulk = get_session()
+            for item in results:
+                url = item["profile_url"]
+                exists = sess_bulk.query(HotelExecutive).filter(
+                    HotelExecutive.profile_url == url
+                ).first()
+                if not exists:
+                    # Tự đoán title từ query nguồn
+                    title_hint = item.get("title_hint", "Hotel Executive")
+                    sess_bulk.add(HotelExecutive(
+                        name=f"[Scan] {url.split('/in/')[1].rstrip('/') if '/in/' in url else 'Unknown'}",
+                        title=title_hint,
+                        company="Vietnam Hospitality",
+                        city="Vietnam",
+                        location="Vietnam",
+                        profile_url=url,
+                        headline=f"{title_hint} - LinkedIn",
+                        lead_score=90,
+                        status="Mới tìm thấy"
+                    ))
+                    added_count += 1
+
+            sess_bulk.commit()
+            sess_bulk.close()
+
+            st.success(f"🎉 BULK SCAN XONG! Tìm được **{len(results)}** profile · Thêm mới vào DB: **+{added_count}** hồ sơ · Sẵn sàng kết bạn trong Top 20!")
+            time.sleep(1.5)
+            st.rerun()
