@@ -340,110 +340,196 @@ with tab_backlog:
                 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────
-# TAB 5: BULK SCAN TOÀN BỘ GM / DOSM / MARCOM TRÊN LINKEDIN
+# TAB 3: SCAN LIÊN TỤC TOÀN QUỐC — GM/DOSM/MARCOM/OWNER
 # ─────────────────────────────────────────────────────────────────────
 with tab_bulk:
-    from engine.linkedin_bulk_scanner import SEARCH_TARGETS
+    from engine.continuous_scanner import (
+        seed_scan_jobs, get_scan_stats, get_pending_jobs,
+        run_scan_jobs, build_all_queries, TITLES, REGIONS
+    )
 
-    st.markdown("""
+    # Nạp scan jobs nếu chưa có
+    seed_scan_jobs()
+    stats = get_scan_stats()
+    total_queries = len(build_all_queries())
+
+    st.markdown(f"""
     <div style="background:linear-gradient(135deg,#0D0D0D,#080808);border:1px solid #E50914;border-radius:4px;padding:20px 24px;margin-bottom:20px;">
-      <div style="font-size:10px;letter-spacing:2px;color:#E50914;font-weight:700;text-transform:uppercase;">TÌM KIẾM TỰ ĐỘNG HÀNG LOẠT</div>
-      <div style="font-family:'Montserrat',sans-serif;font-size:22px;font-weight:700;color:#FFF;margin:6px 0;">🌐 Bulk Scan: Toàn Bộ GM · DOSM · Marcom Trên LinkedIn</div>
+      <div style="font-size:10px;letter-spacing:2px;color:#E50914;font-weight:700;text-transform:uppercase;">SCAN LINKEDIN LIÊN TỤC TOÀN QUỐC</div>
+      <div style="font-family:'Montserrat',sans-serif;font-size:22px;font-weight:700;color:#FFF;margin:6px 0;">
+        🌐 Tự Động Tìm GM · DOSM · Marcom · Owner Toàn Việt Nam
+      </div>
       <div style="font-size:12px;color:#999;">
-        Hệ thống tự động tìm kiếm theo <b>chức danh × thành phố × thương hiệu</b> trên LinkedIn,
-        thu thập toàn bộ link <code style="color:#E50914;">/in/</code> thật rồi nạp vào hàng đợi kết bạn.
-        Không giới hạn số người — càng nhiều query càng tìm được nhiều sếp.
+        Ma trận <b>{len(TITLES)} chức danh × {len(REGIONS)} khu vực</b> = <b>{total_queries} bộ query</b> · 
+        Mỗi bộ quét đến trang cuối cùng · Chỉ thêm người <b>CHƯA CÓ</b> trong DB vào hàng đợi kết bạn ·
+        Tự động chạy lại sau 7 ngày để bắt <b>người mới đăng ký</b> LinkedIn.
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Thống kê số query hiện tại
-    col_bk1, col_bk2, col_bk3 = st.columns(3)
-    col_bk1.metric("Số bộ tìm kiếm (query)", len(SEARCH_TARGETS))
-    col_bk2.metric("Trang / query", "3 trang × 10 kết quả")
-    col_bk3.metric("Ước tính tìm được", f"~{len(SEARCH_TARGETS) * 30}+ hồ sơ")
+    # ── DASHBOARD TIẾN ĐỘ ──
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Tổng query", stats["total"])
+    c2.metric("✅ Đã xong", stats["done"])
+    c3.metric("⏳ Chờ scan", stats["pending"])
+    c4.metric("🔄 Đang chạy", stats["running"])
+    c5.metric("👥 Người mới thêm", stats["total_new_added"])
 
-    st.markdown("")
-
-    # Xem danh sách query
-    with st.expander(f"📋 Xem {len(SEARCH_TARGETS)} bộ tìm kiếm sẽ chạy"):
-        for i, (title, location) in enumerate(SEARCH_TARGETS, 1):
-            st.markdown(f"`{i:02d}.` **{title}** · {location}")
+    # Progress bar toàn bộ
+    pct = stats["progress_pct"]
+    st.markdown(f"""
+    <div style="margin:8px 0 16px;">
+      <div style="font-size:10px;color:#888;margin-bottom:4px;">Tiến độ scan toàn quốc: {pct}%</div>
+      <div style="background:#1A1A1A;border-radius:4px;height:8px;">
+        <div style="background:#E50914;width:{pct}%;height:8px;border-radius:4px;transition:width 0.3s;"></div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     st.divider()
 
-    # Cookie input
-    bulk_li_at = st.text_input(
-        "🔑 Cookie li_at:",
-        type="password",
-        placeholder="AQEDATxxxxxx...",
-        key="bulk_li_at_input"
-    )
+    # ── COOKIE & CẤU HÌNH ──
+    with st.expander("📖 Cách lấy Cookie li_at (làm 1 lần duy nhất)"):
+        st.markdown("""
+        1. Mở **Chrome**, đăng nhập LinkedIn
+        2. Nhấn **F12** → tab **Application** → **Cookies** → **https://www.linkedin.com**
+        3. Tìm dòng **`li_at`** → Copy toàn bộ giá trị cột **Value**
+        4. Dán vào ô bên dưới
+        """)
 
-    col_opt1, col_opt2 = st.columns(2)
-    with col_opt1:
-        max_pages = st.slider("Số trang / query (nhiều hơn = tìm được nhiều hơn):", 1, 10, 3)
-    with col_opt2:
-        st.markdown("")
-        st.markdown("")
-        headless_mode = st.checkbox("Chạy ẩn (không hiện Chrome)", value=True)
+    cs_li_at = st.text_input("🔑 Cookie li_at:", type="password",
+                              placeholder="AQEDATxxxxxx...", key="cs_li_at")
+
+    col_cfg1, col_cfg2 = st.columns(2)
+    with col_cfg1:
+        max_pg = st.slider("Số trang tối đa / query:", 1, 20, 10,
+                            help="LinkedIn thường có ~10 trang = 100 kết quả / query")
+    with col_cfg2:
+        batch_size = st.slider("Số query chạy mỗi lần:", 5, 50, 20,
+                                help="Chạy ít hơn để tránh bị LinkedIn giới hạn tốc độ")
 
     st.markdown("")
 
-    if st.button("🚀 BẮT ĐẦU BULK SCAN TOÀN BỘ", type="primary", use_container_width=True):
-        if not bulk_li_at:
-            st.error("❌ Vui lòng nhập Cookie li_at!")
-        else:
-            from engine.linkedin_bulk_scanner import bulk_search_linkedin
+    # ── THÔNG TIN CHI TIẾT MA TRẬN QUERY ──
+    with st.expander(f"📋 Xem toàn bộ {total_queries} bộ query ({len(TITLES)} chức danh × {len(REGIONS)} khu vực)"):
+        col_t, col_r = st.columns(2)
+        with col_t:
+            st.markdown("**Chức danh target:**")
+            for t in TITLES:
+                st.markdown(f"- {t}")
+        with col_r:
+            st.markdown("**Khu vực scan:**")
+            for rname, _ in REGIONS:
+                st.markdown(f"- {rname}")
 
-            progress_bar = st.progress(0)
-            status_txt = st.empty()
-            result_box = st.empty()
+    st.divider()
 
-            found_count = 0
-            added_count = 0
+    # ── NÚT ĐIỀU KHIỂN ──
+    btn1, btn2, btn3 = st.columns(3)
 
-            def on_progress(qi, total, label):
-                progress_bar.progress(qi / total if total > 0 else 0)
-                status_txt.markdown(f"⏳ **[{qi+1}/{total}]** Đang tìm: **{label}**...")
+    with btn1:
+        if st.button("🚀 BẮT ĐẦU SCAN", type="primary", use_container_width=True):
+            if not cs_li_at:
+                st.error("❌ Cần Cookie li_at!")
+            else:
+                progress_bar = st.progress(0)
+                status_box   = st.empty()
+                counter_box  = st.empty()
 
-            with st.spinner("Đang chạy Bulk Scan LinkedIn..."):
-                results = bulk_search_linkedin(
-                    li_at_cookie=bulk_li_at,
-                    max_pages_per_query=max_pages,
-                    progress_callback=on_progress,
-                    headless=headless_mode
+                def on_prog(ji, total, job, total_new):
+                    pct_now = ji / total if total else 0
+                    progress_bar.progress(pct_now)
+                    status_box.markdown(
+                        f"⏳ **[{ji+1}/{total}]** `{job['title']}` · "
+                        f"**{job['region']}** ({job['location']})"
+                    )
+                    counter_box.markdown(f"👥 Đã tìm được người mới: **{total_new}**")
+
+                result = run_scan_jobs(
+                    li_at_cookie=cs_li_at,
+                    max_pages=max_pg,
+                    progress_callback=on_prog
                 )
 
-            progress_bar.progress(1.0)
-            status_txt.markdown(f"✅ Scan xong! Tìm thấy **{len(results)}** profile LinkedIn")
+                progress_bar.progress(1.0)
+                if result.get("status") == "cookie_expired":
+                    st.error("🔴 Cookie li_at hết hạn! Vui lòng lấy cookie mới từ Chrome.")
+                else:
+                    st.success(
+                        f"🎉 XONG! Đã quét {result['jobs_processed']} query · "
+                        f"Thêm mới vào queue: **+{result['total_new']}** người · "
+                        f"F5 để xem Top 20 cập nhật!"
+                    )
+                time.sleep(1.5)
+                st.rerun()
 
-            # Lưu vào DB — chỉ thêm URL chưa có
-            sess_bulk = get_session()
-            for item in results:
-                url = item["profile_url"]
-                exists = sess_bulk.query(HotelExecutive).filter(
-                    HotelExecutive.profile_url == url
-                ).first()
-                if not exists:
-                    # Tự đoán title từ query nguồn
-                    title_hint = item.get("title_hint", "Hotel Executive")
-                    sess_bulk.add(HotelExecutive(
-                        name=f"[Scan] {url.split('/in/')[1].rstrip('/') if '/in/' in url else 'Unknown'}",
-                        title=title_hint,
-                        company="Vietnam Hospitality",
-                        city="Vietnam",
-                        location="Vietnam",
-                        profile_url=url,
-                        headline=f"{title_hint} - LinkedIn",
-                        lead_score=90,
-                        status="Mới tìm thấy"
-                    ))
-                    added_count += 1
+    with btn2:
+        # Scan chỉ khu vực được chọn
+        region_choice = st.selectbox("Chọn khu vực:", [r[0] for r in REGIONS], key="region_sel")
+        if st.button(f"🎯 Scan {region_choice}", use_container_width=True):
+            if not cs_li_at:
+                st.error("❌ Cần Cookie li_at!")
+            else:
+                from engine.continuous_scanner import ScanJob
+                sess_r = get_session()
+                region_jobs = sess_r.query(ScanJob).filter(
+                    ScanJob.region == region_choice
+                ).all()
+                jids = [j.id for j in region_jobs]
+                sess_r.close()
 
-            sess_bulk.commit()
-            sess_bulk.close()
+                progress_bar2 = st.progress(0)
+                status_box2   = st.empty()
 
-            st.success(f"🎉 BULK SCAN XONG! Tìm được **{len(results)}** profile · Thêm mới vào DB: **+{added_count}** hồ sơ · Sẵn sàng kết bạn trong Top 20!")
-            time.sleep(1.5)
+                def on_prog2(ji, total, job, total_new):
+                    progress_bar2.progress(ji / total if total else 0)
+                    status_box2.markdown(f"⏳ **[{ji+1}/{total}]** {job['title']} · {job['location']}")
+
+                result2 = run_scan_jobs(
+                    li_at_cookie=cs_li_at,
+                    job_ids=jids,
+                    max_pages=max_pg,
+                    progress_callback=on_prog2
+                )
+                progress_bar2.progress(1.0)
+                st.success(f"✅ {region_choice}: +{result2['total_new']} người mới vào queue!")
+                time.sleep(1.5)
+                st.rerun()
+
+    with btn3:
+        st.markdown("")
+        st.markdown("")
+        if st.button("♻️ RESET SCAN (chạy lại từ đầu)", use_container_width=True):
+            from engine.continuous_scanner import ScanJob
+            from datetime import datetime
+            sess_rst = get_session()
+            sess_rst.query(ScanJob).update({"status": "pending", "current_page": 0,
+                                             "next_run": datetime.now()})
+            sess_rst.commit()
+            sess_rst.close()
+            st.success("✅ Đã reset! Hệ thống sẽ scan lại toàn bộ từ đầu.")
+            time.sleep(1)
             st.rerun()
+
+    # ── BẢNG TIẾN ĐỘ TỪNG KHU VỰC ──
+    st.divider()
+    st.markdown("**📊 Tiến độ theo khu vực:**")
+
+    from engine.continuous_scanner import ScanJob as SJ
+    sess_show = get_session()
+    region_progress = []
+    for rname, _ in REGIONS:
+        total_r = sess_show.query(SJ).filter(SJ.region == rname).count()
+        done_r  = sess_show.query(SJ).filter(SJ.region == rname, SJ.status.in_(["done","exhausted"])).count()
+        new_r   = sess_show.query(SJ).filter(SJ.region == rname).with_entities(
+            __import__('sqlalchemy').func.sum(SJ.new_added)
+        ).scalar() or 0
+        region_progress.append({"Khu vực": rname, "Tổng query": total_r,
+                                  "Đã xong": done_r, "Người mới": int(new_r),
+                                  "Hoàn thành": f"{round(done_r/total_r*100) if total_r else 0}%"})
+    sess_show.close()
+
+    import pandas as pd
+    df_prog = pd.DataFrame(region_progress)
+    st.dataframe(df_prog, use_container_width=True, hide_index=True)
+
