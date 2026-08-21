@@ -6,9 +6,15 @@ from typing import List, Dict
 from database.models import get_session, HotelExecutive
 
 def get_prioritized_executives(selected_cities: List[str] = None, limit: int = 20, offset: int = 0) -> List[Dict]:
-    """Lấy danh sách lãnh đạo chưa kết bạn theo thứ tự ưu tiên Lead Score"""
+    """Lấy danh sách lãnh đạo chưa kết bạn theo thứ tự ưu tiên Lead Score.
+    CHỈ NHẬN LINK /in/ THẬT — search URL bị chặn hoàn toàn khỏi queue.
+    """
     session = get_session()
-    query = session.query(HotelExecutive).filter(HotelExecutive.status == "Mới tìm thấy")
+    query = session.query(HotelExecutive).filter(
+        HotelExecutive.status == "Mới tìm thấy",
+        # CHẶN: không cho search URL lọt vào queue
+        HotelExecutive.profile_url.notlike("%/search/results/%")
+    )
     
     if selected_cities:
         query = query.filter(HotelExecutive.city.in_(selected_cities))
@@ -20,6 +26,7 @@ def get_prioritized_executives(selected_cities: List[str] = None, limit: int = 2
     ).limit(total_needed).all()
     
     sliced_leads = ordered_leads[offset:total_needed]
+
     
     result = []
     for idx, e in enumerate(sliced_leads):

@@ -342,25 +342,132 @@ with tab_backlog:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# TAB 3: ĐỒNG BỘ & NẠP LÃNH ĐẠO MỚI (1-CLICK)
+# TAB 3: ĐỒNG BỘ & NẠP LÃNH ĐẠO MỚI — SCAN /IN/ TRƯỚC, QUEUE SAU
 # ─────────────────────────────────────────────────────────────────────
 with tab_sync:
-    st.markdown("### 🔄 Tự Động Nạp & Đồng Bộ Hàng Trăm Lãnh Đạo Khách Sạn Mới")
     st.markdown("""
-    Bấm nút bên dưới để hệ thống **tự động nạp toàn bộ danh bạ 38+ General Manager & DOSM 4-5 sao trên toàn quốc** vào hàng đợi tự động:
-    """)
+    <div style="background:linear-gradient(135deg,#0D0D0D,#0A0A0A);border:1px solid #E50914;border-radius:4px;padding:20px 24px;margin-bottom:20px;">
+      <div style="font-size:10px;letter-spacing:2px;color:#E50914;font-weight:700;text-transform:uppercase;">QUY TRÌNH CHUẨN</div>
+      <div style="font-family:'Montserrat',sans-serif;font-size:20px;font-weight:700;color:#FFF;margin:6px 0;">Scan lấy link /in/ thật → Lưu DB → Vào hàng đợi kết bạn</div>
+      <div style="font-size:12px;color:#999;">Chỉ những hồ sơ có link <code style="color:#E50914;">/in/</code> thật mới được vào hàng đợi Top 20. Không có search URL nào lọt vào queue.</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    if st.button("🔄 TỰ ĐỘNG NẠP DANH SÁCH LÃNH ĐẠO TOÀN QUỐC", type="primary", use_container_width=True):
+    # Nhập cookie li_at
+    with st.expander("📖 Cách lấy Cookie li_at (chỉ làm 1 lần)", expanded=False):
+        st.markdown("""
+        1. Mở **Chrome**, đăng nhập LinkedIn
+        2. Nhấn **F12** → tab **Application** → **Cookies** → **https://www.linkedin.com**
+        3. Tìm dòng **`li_at`** → Copy toàn bộ giá trị cột **Value**
+        4. Dán vào ô bên dưới
+        """)
+
+    sync_li_at = st.text_input(
+        "🔑 Cookie li_at (bắt buộc để scan link /in/ thật):",
+        type="password",
+        placeholder="AQEDATxxxxxx...",
+        key="sync_li_at_input"
+    )
+
+    st.divider()
+
+    # Thống kê hiện tại
+    sess_sync = get_session()
+    all_sync = sess_sync.query(HotelExecutive).all()
+    already_direct = [e for e in all_sync if e.profile_url and "/in/" in e.profile_url]
+    need_scan = [e for e in all_sync if e.profile_url and "/search/results/" in e.profile_url]
+    not_imported = [v for v in VERIFIED_VIP_LEADS if not sess_sync.query(HotelExecutive).filter(HotelExecutive.name == v[0]).first()]
+    sess_sync.close()
+
+    col_m1, col_m2, col_m3 = st.columns(3)
+    col_m1.metric("✅ Đã có link /in/ thật", len(already_direct), "Sẵn sàng kết bạn")
+    col_m2.metric("⚠️ Còn dùng search URL", len(need_scan), "Cần scan trước")
+    col_m3.metric("➕ Chưa import vào DB", len(not_imported))
+
+    st.markdown("")
+
+    if not sync_li_at:
+        st.warning("⚠️ Vui lòng nhập Cookie **li_at** ở trên để hệ thống có thể tự động scan lấy link /in/ thật trước khi lưu vào hàng đợi.")
+
+    # NÚT CHÍNH: Nạp & Scan ngay
+    if st.button("🚀 NẠP + SCAN /IN/ + ĐƯA VÀO HÀNG ĐỢI (1 BƯỚC)", type="primary", use_container_width=True):
+        if not sync_li_at:
+            st.error("❌ Thiếu cookie li_at — không thể scan link /in/ thật!")
+        else:
+            from engine.linkedin_scanner import scan_profile_url
+
+            session = get_session()
+            progress = st.progress(0)
+            status_box = st.empty()
+
+            # Danh sách cần xử lý: chưa có trong DB HOẶC đang dùng search URL
+            to_process = []
+            for name, title, comp, city, url, score in VERIFIED_VIP_LEADS:
+                existing = session.query(HotelExecutive).filter(HotelExecutive.name == name).first()
+                if not existing:
+                    to_process.append(("new", None, name, title, comp, city, url, score))
+                elif existing.profile_url and "/search/results/" in existing.profile_url:
+                    to_process.append(("update", existing.id, name, title, comp, city, url, score))
+
+            total = len(to_process)
+            ok_count = 0
+
+            if total == 0:
+                st.success("🎉 Tất cả hồ sơ đã có link /in/ thật! Không cần xử lý thêm.")
+            else:
+                for i, item in enumerate(to_process):
+                    action, exec_id, name, title, comp, city, raw_url, score = item
+                    status_box.markdown(f"⏳ **[{i+1}/{total}]** Đang scan **{name}**...")
+
+                    final_url = raw_url  # mặc định giữ nguyên
+
+                    # Nếu là search URL → scan lấy /in/ thật
+                    if raw_url and "/search/results/" in raw_url:
+                        result = scan_profile_url(raw_url, sync_li_at, headless=True)
+                        if result["status"] == "ok":
+                            final_url = result["profile_url"]
+                            status_box.markdown(f"✅ **{name}** → `{final_url}`")
+                        else:
+                            status_box.markdown(f"⚠️ **{name}** → Không scan được, giữ search URL tạm")
+                    else:
+                        status_box.markdown(f"✅ **{name}** → đã có link /in/ trực tiếp")
+
+                    # Lưu vào DB
+                    if action == "new":
+                        session.add(HotelExecutive(
+                            name=name, title=title, company=comp, city=city,
+                            location=f"{city}, Vietnam",
+                            profile_url=final_url,
+                            headline=f"{title} at {comp}",
+                            lead_score=score,
+                            status="Mới tìm thấy"
+                        ))
+                    else:
+                        existing_obj = session.query(HotelExecutive).filter(HotelExecutive.id == exec_id).first()
+                        if existing_obj:
+                            existing_obj.profile_url = final_url
+
+                    ok_count += 1
+                    session.commit()
+                    progress.progress((i + 1) / total)
+                    import time as _t; _t.sleep(2)  # anti-rate-limit
+
+            session.close()
+            status_box.empty()
+            st.success(f"🎉 XONG! Đã xử lý {ok_count}/{total} hồ sơ — chỉ link /in/ thật mới vào hàng đợi kết bạn!")
+            time.sleep(1)
+            st.rerun()
+
+    st.divider()
+    st.markdown("**Hoặc nạp nhanh (không scan) — giữ nguyên link đã có:**")
+    if st.button("⚡ NẠP NHANH (CHỈ HỒ SƠ CHƯA CÓ TRONG DB)", use_container_width=True):
         session = get_session()
         added = 0
         for name, title, comp, city, url, score in VERIFIED_VIP_LEADS:
             exists = session.query(HotelExecutive).filter(HotelExecutive.name == name).first()
             if not exists:
                 session.add(HotelExecutive(
-                    name=name,
-                    title=title,
-                    company=comp,
-                    city=city,
+                    name=name, title=title, company=comp, city=city,
                     location=f"{city}, Vietnam",
                     profile_url=url,
                     headline=f"{title} at {comp}",
@@ -370,9 +477,10 @@ with tab_sync:
                 added += 1
         session.commit()
         session.close()
-        st.success(f"🎉 ĐÃ TỰ ĐỘNG NẠP THÀNH CÔNG TOÀN BỘ DANH BẠ LÃNH ĐẠO VIP (MỚI THÊM: +{added} HỒ SƠ)!")
-        time.sleep(1.2)
+        st.success(f"✅ Đã nạp nhanh +{added} hồ sơ mới vào DB!")
+        time.sleep(1)
         st.rerun()
+
 
 
 # ─────────────────────────────────────────────────────────────────────
