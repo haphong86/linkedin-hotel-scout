@@ -1,5 +1,6 @@
 """
 app.py — LinkedIn Hotel VIP Auto-Scout & Growth Bot (Hà Phong Visuals)
+Chế độ: CHỈ BẤM KẾT BẠN TRỰC TIẾP (DIRECT CONNECT — KHÔNG KÈM TIN NHẮN)
 Tone thiết kế: Đen — Đỏ — Trắng đồng bộ nhận diện thương hiệu
 Chạy: streamlit run app.py
 """
@@ -14,13 +15,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database.models import init_db, get_session, HotelExecutive, ConnectionLog, SystemSetting
 from engine.linkedin_bot import (
-    generate_personalized_note, get_daily_quota_status,
-    send_connection_invite, get_setting, set_setting, DEFAULT_NOTE_TEMPLATE
+    get_daily_quota_status, send_direct_connection, get_setting, set_setting
 )
 
 # ── CẤU HÌNH TRANG STREAMLIT ─────────────────────────────────────────
 st.set_page_config(
-    page_title="Hà Phong Visuals · LinkedIn Hotel Scout Bot",
+    page_title="Hà Phong Visuals · LinkedIn Hotel Direct Connect Bot",
     page_icon="👁️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -132,25 +132,20 @@ html, body, [class*="css"] {
   box-shadow: 0 4px 14px rgba(229, 9, 20, 0.4) !important;
 }
 
-/* Inputs */
-.stTextInput input, .stTextArea textarea {
-  background: #111111 !important;
-  border: 1px solid #282828 !important;
-  color: #FFFFFF !important;
-}
-.stTextInput input:focus, .stTextArea textarea:focus {
-  border-color: #E50914 !important;
-  box-shadow: 0 0 0 1px #E50914 !important;
-}
-
-/* Alert */
-.stAlert {
-  background: #111111 !important;
-  border: 1px solid #282828 !important;
-  border-left: 4px solid #E50914 !important;
+/* Dataframe */
+[data-testid="stDataFrame"] {
+  border: 1px solid #222222 !important;
   border-radius: 4px !important;
-  color: #E0E0E0 !important;
 }
+.stDataFrame thead th {
+  background: #141414 !important;
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+  border-bottom: 2px solid #E50914 !important;
+}
+.stDataFrame tbody tr { background: #0A0A0A !important; }
+.stDataFrame tbody tr:hover { background: #161616 !important; }
+.stDataFrame tbody td { color: #E0E0E0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -172,9 +167,9 @@ with st.sidebar:
 
     st.markdown("""
     <div style="margin-bottom:18px; text-align:center;">
-      <div style="font-size:9px;letter-spacing:2px;color:#888;text-transform:uppercase;">LinkedIn VIP Auto-Scout Bot</div>
+      <div style="font-size:9px;letter-spacing:2px;color:#888;text-transform:uppercase;">LinkedIn Direct Connect Bot</div>
       <div style="font-size:10px;color:#FFFFFF;background:#1A0506;border:1px solid #E50914;border-radius:4px;padding:4px 8px;margin-top:8px;font-weight:700;">
-        ⚡ BẢN v1.0.0 · ANTI-BAN ACTIVE
+        ⚡ CHẾ ĐỘ: KẾT BẠN TRỰC TIẾP
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -201,9 +196,9 @@ with st.sidebar:
     quota = get_daily_quota_status()
     st.markdown(f"""
     <div style="background:#111; border:1px solid #222; padding:12px; border-radius:4px; font-size:11px;">
-      <div style="color:#888;">Đã gửi hôm nay: <b style="color:#FFF;">{quota['sent_today']} / {quota['max_daily']}</b></div>
-      <div style="color:#888; margin-top:4px;">Còn lại được phép gửi: <b style="color:#E50914;">{quota['remaining']} lượt</b></div>
-      <div style="font-size:9px; color:#666; margin-top:6px;">⏱️ Giãn cách ngẫu nhiên: 30s – 90s/lượt</div>
+      <div style="color:#888;">Đã bấm hôm nay: <b style="color:#FFF;">{quota['sent_today']} / {quota['max_daily']}</b></div>
+      <div style="color:#888; margin-top:4px;">Còn lại được phép kết bạn: <b style="color:#E50914;">{quota['remaining']} lượt</b></div>
+      <div style="font-size:9px; color:#666; margin-top:6px;">🛡️ Anti-Ban: Giãn cách 30s – 90s/lượt</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -219,7 +214,7 @@ session.close()
 
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("TỔNG LÃNH ĐẠO VIP", total_vip)
-c2.metric("ĐÃ GỬI LỜI MỜI", total_invited)
+c2.metric("ĐÃ BẤM KẾT BẠN", total_invited)
 c3.metric("TỔNG GIÁM ĐỐC (GM)", gm_count)
 c4.metric("GIÁM ĐỐC SALES & MKT", dosm_count)
 c5.metric("MARCOM / MARKETING", marcom_count)
@@ -230,25 +225,25 @@ st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 tab_queue, tab_directory, tab_config, tab_history = st.tabs([
     "🚀 HÀNG ĐỢI HÔM NAY (TOP 20)",
     "👥 DANH BẠ LÃNH ĐẠO (ĐÃ QUÉT)",
-    "⚙️ MẪU TIN NHẮN & CẤU HÌNH",
+    "⚙️ CẤU HÌNH & QUÉT MỚI",
     "📈 NHẬT KÝ & TĂNG TRƯỞNG"
 ])
 
 
 # ─────────────────────────────────────────────────────────────────────
-# TAB 1: HÀNG ĐỢI HÔM NAY (TOP 20)
+# TAB 1: HÀNG ĐỢI HÔM NAY (TOP 20 - DIRECT CONNECT)
 # ─────────────────────────────────────────────────────────────────────
 with tab_queue:
     st.markdown("""
     <div style="background:linear-gradient(135deg, #121212 0%, #0A0A0A 100%); border:1px solid #E50914; border-radius:4px; padding:20px 24px; margin-bottom:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
         <div>
-          <div style="font-size:10px; letter-spacing:2px; color:#E50914; font-weight:700; text-transform:uppercase;">HỆ THỐNG KẾT BẠN THÔNG MINH</div>
-          <div style="font-family:'Montserrat',sans-serif; font-size:24px; font-weight:700; color:#FFF; margin:4px 0;">1-Click VIP Auto-Connect</div>
-          <div style="font-size:12px; color:#999;">Tự động gửi lời mời kết bạn kèm lời chào cá nhân hóa tới các GM, DOSM, Marcom Manager tại các khách sạn 4–5★ hàng đầu.</div>
+          <div style="font-size:10px; letter-spacing:2px; color:#E50914; font-weight:700; text-transform:uppercase;">KẾT BẠN TRỰC TIẾP — KHÔNG GỬI TIN NHẮN</div>
+          <div style="font-family:'Montserrat',sans-serif; font-size:24px; font-weight:700; color:#FFF; margin:4px 0;">1-Click Direct Connect</div>
+          <div style="font-size:12px; color:#999;">Tự động bấm kết bạn trực tiếp tới các General Manager, DOSM, Marcom Manager tại các resort & khách sạn 4–5★ hàng đầu.</div>
         </div>
         <div>
-          <div style="font-size:10px; color:#4a7c59; font-weight:700;">● ANTI-BAN ENGINE: ACTIVE</div>
+          <div style="font-size:10px; color:#4a7c59; font-weight:700;">● CHẾ ĐỘ: DIRECT CONNECT (FAST & SAFE)</div>
           <div style="font-size:11px; color:#888; margin-top:4px;">Giới hạn an toàn: <b>20 kết nối / ngày</b></div>
         </div>
       </div>
@@ -268,50 +263,45 @@ with tab_queue:
     with col_act1:
         st.markdown(f"**Danh sách đề xuất hôm nay:** `{len(queue_leads)} lãnh đạo cấp cao`")
     with col_act2:
-        if st.button("🚀 BẮT ĐẦU AUTO-CONNECT TOP 20", type="primary", use_container_width=True):
+        if st.button("🚀 BẮT ĐẦU BẤM KẾT BẠN TOP 20", type="primary", use_container_width=True):
             if not queue_leads:
-                st.warning("Hiện không còn người nào trong hàng đợi chưa gửi!")
+                st.warning("Hiện không còn người nào trong hàng đợi chưa kết bạn!")
             else:
                 progress_bar = st.progress(0)
                 status_box = st.empty()
                 success_count = 0
                 
                 for idx, lead in enumerate(queue_leads):
-                    status_box.markdown(f"⏳ **[{idx+1}/{len(queue_leads)}]** Đang gửi kết bạn tới: **{lead.name}** ({lead.title} · {lead.company})...")
-                    ok, msg = send_connection_invite(lead.id)
+                    status_box.markdown(f"⏳ **[{idx+1}/{len(queue_leads)}]** Đang bấm kết bạn trực tiếp tới: **{lead.name}** ({lead.title} · {lead.company})...")
+                    ok, msg = send_direct_connection(lead.id)
                     if ok:
                         success_count += 1
                     progress_bar.progress((idx + 1) / len(queue_leads))
-                    # Giả lập delay an toàn
-                    time.sleep(1.2)
+                    time.sleep(1.0)
                 
-                st.success(f"🎉 ĐÃ HOÀN TẤT GỬI LỜI MỜI KẾT BẠN TỚI {success_count} LÃNH ĐẠO KHÁCH SẠN VIP!")
+                st.success(f"🎉 ĐÃ HOÀN TẤT BẤM KẾT BẠN TRỰC TIẾP TỚI {success_count} LÃNH ĐẠO KHÁCH SẠN VIP!")
                 time.sleep(1.5)
                 st.rerun()
 
     st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
 
     if not queue_leads:
-        st.info("✅ Bạn đã gửi kết bạn hết toàn bộ danh sách hiện tại. Hãy chuyển sang Tab 'Mẫu Tin Nhắn & Cấu Hình' để quét thêm người mới!")
+        st.info("✅ Bạn đã kết bạn hết danh sách hiện tại trong ngày. Hãy chuyển sang Tab 'Cấu Hình & Quét Mới' để quét thêm người mới!")
     else:
         for idx, lead in enumerate(queue_leads):
-            note_preview = generate_personalized_note(lead)
             with st.container():
                 st.markdown(f"""
                 <div style="background:#111; border:1px solid #222; border-left:3px solid #E50914; border-radius:4px; padding:16px 20px; margin-bottom:12px;">
-                  <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div>
                       <div style="font-size:16px; font-weight:700; color:#FFF;">#{idx+1}. {lead.name}</div>
                       <div style="font-size:13px; color:#E50914; font-weight:600; margin-top:2px;">{lead.title} · <span style="color:#FFF;">{lead.company}</span></div>
-                      <div style="font-size:11px; color:#888; margin-top:4px;">📍 {lead.location} | Lead Score: <b style="color:#FFF;">{lead.lead_score}đ</b></div>
-                      <div style="background:#080808; border:1px solid #282828; border-radius:4px; padding:8px 12px; margin-top:10px; font-size:11px; color:#BBB;">
-                        💬 <b>Lời nhắn đính kèm:</b> <i>\"{note_preview}\"</i>
-                      </div>
+                      <div style="font-size:11px; color:#888; margin-top:4px;">📍 {lead.location} | Điểm ưu tiên: <b style="color:#FFF;">{lead.lead_score}đ</b></div>
                     </div>
                     <div style="text-align:right;">
                       <a href="{lead.profile_url}" target="_blank"
-                         style="display:inline-block; background:#1A1A1A; border:1px solid #444; color:#FFF; padding:6px 14px; border-radius:4px; font-size:11px; text-decoration:none; font-weight:600; margin-bottom:6px;">
-                         🔗 Mở LinkedIn
+                         style="display:inline-block; background:#E50914; color:#FFF; padding:8px 18px; border-radius:4px; font-size:12px; text-decoration:none; font-weight:700;">
+                         ➕ Bấm Kết Bạn Ngay
                       </a>
                     </div>
                   </div>
@@ -340,7 +330,7 @@ with tab_directory:
                 "Khách Sạn / Resort": e.company,
                 "Khu Vực": e.city,
                 "Trạng Thái": e.status,
-                "Lead Score": f"{e.lead_score}đ",
+                "Điểm Ưu Tiên": f"{e.lead_score}đ",
                 "Link Profile": e.profile_url
             })
         df = pd.DataFrame(data)
@@ -348,20 +338,17 @@ with tab_directory:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# TAB 3: MẪU TIN NHẮN & CẤU HÌNH
+# TAB 3: CẤU HÌNH & QUÉT MỚI
 # ─────────────────────────────────────────────────────────────────────
 with tab_config:
-    st.markdown("### ⚙️ Cấu hình Tin nhắn & Session LinkedIn")
+    st.markdown("### ⚙️ Cấu hình Hạn ngạch & Quét bổ sung")
     
-    current_note = get_setting("custom_note_template", DEFAULT_NOTE_TEMPLATE)
-    new_note = st.text_area("Mẫu lời nhắn kết bạn cá nhân hóa (< 300 ký tự):", value=current_note, height=120)
-    st.caption("Các biến hỗ trợ tự động điền: `{name}` (Tên đầy đủ), `{first_name}` (Tên gọi), `{title}` (Chức danh), `{company}` (Tên khách sạn), `{city}` (Thành phố)")
+    current_max = get_setting("max_daily_connections", "20")
+    new_max = st.selectbox("Hạn ngạch kết bạn tối đa mỗi ngày (Khuyến nghị 15–20):", options=["10", "15", "20", "25"], index=2 if current_max=="20" else 1)
     
-    col_save, col_scan = st.columns(2)
-    with col_save:
-        if st.button("💾 LƯU MẪU TIN NHẮN", use_container_width=True):
-            set_setting("custom_note_template", new_note)
-            st.success("Đã cập nhật mẫu tin nhắn thành công!")
+    if st.button("💾 LƯU HẠN NGẠCH", use_container_width=True):
+        set_setting("max_daily_connections", new_max)
+        st.success(f"Đã cập nhật hạn ngạch: {new_max} kết nối/ngày!")
 
     st.divider()
     st.markdown("#### 🔍 Quét bổ sung Lãnh đạo Khách sạn mới:")
@@ -392,7 +379,7 @@ with tab_history:
                 "Thời Gian": l.sent_at.strftime("%d/%m/%Y %H:%M"),
                 "Người Nhận": l.recipient_name,
                 "Chức Vụ": l.recipient_title,
-                "Lời Nhắn Đã Gửi": l.custom_note[:60] + "...",
+                "Phương Thức": "Bấm Kết Bạn Trực Tiếp (Không gửi tin)",
                 "Trạng Thái": l.status
             })
         st.dataframe(pd.DataFrame(log_data), use_container_width=True)
