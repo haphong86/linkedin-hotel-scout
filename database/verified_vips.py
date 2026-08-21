@@ -37,7 +37,7 @@ RAW_VIP_LEADS = [
     ("Marcel Oostenbrink", "General Manager", "Four Seasons Resort The Nam Hai", "Hội An", None, 98),
     ("Piyoros Naronglith", "General Manager", "Renaissance Hoi An Resort & Spa", "Hội An", None, 98),
     ("Michelle Ford", "General Manager", "Namia River Retreat Hoi An", "Hội An", None, 98),
-    ("Anton Bespalov", "General Manager", "TUI BLUE Nam Hoi An Resort", "Hội An", None, 98),
+    ("Anton Bespalov", "General Manager", "TUI BLUE Nam Hoi An Resort", "Hội An", "https://www.linkedin.com/in/anton-bespalov-382a35a/", 98),
     ("Sven Saebel", "Managing Director", "Hotel Royal Hoi An – MGallery", "Hội An", None, 98),
     ("Christian Gerart", "General Manager", "Anantara Hoi An Resort", "Hội An", None, 98),
     ("Le Anh Tuan", "General Manager", "Banyan Tree & Angsana Lang Co", "Lăng Cô", None, 98),
