@@ -1,13 +1,16 @@
 """
-app.py — LinkedIn Hotel VIP Auto-Scout & Growth System (Hà Phong Visuals)
-Hệ thống Kênh Quét Trực Tiếp (Smart Growth Radars) — 100% HIỆU QUẢ THỰC TẾ
-Kết nối trực tiếp tới hàng trăm Tổng Giám Đốc (GM), DOSM, Marcom Manager trên LinkedIn không qua trung gian, 0% lỗi.
+app.py — LinkedIn Hotel VIP Auto-Scout & Growth Bot (Hà Phong Visuals)
+Cơ chế: TỰ ĐỘNG HÓA 24/7/365 TRÊN CLOUD (AUTO-PILOT ACTIVE)
+Cơ chế hàng đợi: HÀNG ĐỢI 2 TẦNG (TOP 20 + DỰ BỊ #21+ ĐÔN LÊN TỰ ĐỘNG)
+Cơ chế liên kết: 100% LINK PROFILE PERMALINK CÁ NHÂN GỐC (/in/username-hash/)
+Đã lưu chính xác từng người cụ thể (Bê Trần, Nguyen The, Doo Hyun Shim, Manh Quan Le, Dibi Le, Cath Nguyen...)
+Chạy: streamlit run app.py
 """
 import os
 import sys
-import urllib.parse
-import streamlit as st
+import time
 import pandas as pd
+import streamlit as st
 from datetime import datetime, date
 
 # Ép buộc Socket phân giải IPv4 trên Railway/Linux Container
@@ -25,19 +28,28 @@ socket.getaddrinfo = _ipv4_only_getaddrinfo
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from database.models import init_db, get_session, ConnectionLog, SystemSetting
+from database.models import init_db, get_session, HotelExecutive, ConnectionLog, SystemSetting
+from engine.linkedin_bot import (
+    get_daily_quota_status, send_direct_connection, get_setting, set_setting
+)
+from engine.priority_queue import get_daily_queue_20, get_backlog_queue_21_plus
 from engine.telegram_notifier import send_telegram_daily_report
+from scheduler.heartbeat_tracker import get_heartbeat_status, log_activity
+from scheduler.background_worker import start_background_worker, is_autopilot_active, set_autopilot_status, execute_daily_autopilot_cycle
 
-# Khởi tạo DB
-init_db()
+# Khởi động tiến trình ngầm 24/7/365
+start_background_worker()
 
 # ── CẤU HÌNH TRANG STREAMLIT ─────────────────────────────────────────
 st.set_page_config(
-    page_title="Hà Phong Visuals · LinkedIn Hotel VIP Growth System",
+    page_title="Hà Phong Visuals · LinkedIn VIP Growth Bot",
     page_icon="👁️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Khởi tạo DB
+init_db()
 
 # ── CSS THEME ĐEN — ĐỎ — TRẮNG HÀ PHONG VISUALS ───────────────────────
 st.markdown("""
@@ -136,88 +148,6 @@ html, body, [class*="css"] {
 """, unsafe_allow_html=True)
 
 
-# ── DANH SÁCH RADAR KẾT NỐI VIP CHUẨN XÁC 100% ────────────────────────
-RADAR_CATEGORIES = [
-    {
-        "id": "gm_danang",
-        "title": "👑 TỔNG GIÁM ĐỐC (GM) — ĐÀ NẴNG",
-        "desc": "Tất cả các General Manager, Resort Manager, Hotel Manager đang điều hành tại các khách sạn & resort cao cấp ở Đà Nẵng.",
-        "badge": "🔴 ƯU TIÊN CAO NHẤT (GM ĐÀ NẴNG)",
-        "query": '"General Manager" "Da Nang" hotel OR resort',
-        "url": "https://www.linkedin.com/search/results/people/?keywords=%22General%20Manager%22%20%22Da%20Nang%22%20hotel%20resort"
-    },
-    {
-        "id": "gm_hoian_hue",
-        "title": "👑 TỔNG GIÁM ĐỐC (GM) — HỘI AN & HUẾ",
-        "desc": "Toàn bộ Tổng Giám Đốc các resort nghỉ dưỡng 5 sao hàng đầu tại Hội An, Nam Hội An, Huế & Lăng Cô.",
-        "badge": "🔴 ƯU TIÊN CAO NHẤT (GM HỘI AN / HUẾ)",
-        "query": '"General Manager" ("Hoi An" OR "Hue" OR "Lang Co") resort OR hotel',
-        "url": "https://www.linkedin.com/search/results/people/?keywords=%22General%20Manager%22%20%22Hoi%20An%22%20resort"
-    },
-    {
-        "id": "dosm_danang_central",
-        "title": "🎯 GIÁM ĐỐC SALES & MARKETING (DOSM) — MIỀN TRUNG",
-        "desc": "Những người trực tiếp nắm giữ ngân sách marketing, quyết định thuê nhiếp ảnh gia chụp ảnh quảng bá khách sạn & resort.",
-        "badge": "🟠 QUYẾT ĐỊNH NGÂN SÁCH (DOSM)",
-        "query": '("Director of Sales and Marketing" OR "DOSM" OR "Commercial Director") "Da Nang" hotel',
-        "url": "https://www.linkedin.com/search/results/people/?keywords=%22Director%20of%20Sales%22%20%22Da%20Nang%22%20hotel"
-    },
-    {
-        "id": "marcom_central",
-        "title": "📸 MARCOM & MARKETING MANAGERS — ĐÀ NẴNG & HỘI AN",
-        "desc": "Trưởng phòng truyền thông, PR Manager, Marcom Manager — những người trực tiếp duyệt hình ảnh visual và đăng tải lên truyền thông.",
-        "badge": "🟡 TRỰC TIẾP DUYỆT HÌNH ẢNH (MARCOM)",
-        "query": '("Marketing Manager" OR "Marcom Manager" OR "Marketing and Communications") ("Da Nang" OR "Hoi An") hotel',
-        "url": "https://www.linkedin.com/search/results/people/?keywords=%22Marketing%20Manager%22%20%22Da%20Nang%22%20hotel"
-    },
-    {
-        "id": "gm_nhatrang_camranh",
-        "title": "🏖️ TỔNG GIÁM ĐỐC (GM) — NHA TRANG & CAM RANH",
-        "desc": "Tổng Giám Đốc các resort 5 sao tại Bãi Dài Cam Ranh và trung tâm thành phố Nha Trang.",
-        "badge": "🔴 TỔNG GIÁM ĐỐC (CAM RANH / NHA TRANG)",
-        "query": '"General Manager" ("Nha Trang" OR "Cam Ranh") resort OR hotel',
-        "url": "https://www.linkedin.com/search/results/people/?keywords=%22General%20Manager%22%20%22Nha%20Trang%22%20resort"
-    },
-    {
-        "id": "gm_phuquoc_phanthiet",
-        "title": "🌴 TỔNG GIÁM ĐỐC (GM) — PHÚ QUỐC & PHAN THIẾT",
-        "desc": "Toàn bộ General Manager các siêu quần thể nghỉ dưỡng tại Đảo Ngọc Phú Quốc, Mũi Né Phan Thiết, Hồ Tràm.",
-        "badge": "🔴 TỔNG GIÁM ĐỐC (PHÚ QUỐC / PHAN THIẾT)",
-        "query": '"General Manager" ("Phu Quoc" OR "Phan Thiet" OR "Mui Ne") resort',
-        "url": "https://www.linkedin.com/search/results/people/?keywords=%22General%20Manager%22%20%22Phu%20Quoc%22%20resort"
-    },
-    {
-        "id": "gm_dalat_quynhon",
-        "title": "🌲 TỔNG GIÁM ĐỐC (GM) — ĐÀ LẠT & QUY NHƠN",
-        "desc": "Tổng Giám Đốc & Giám Đốc Điều Hành các khu nghỉ dưỡng cao cấp tại Đà Lạt, Quy Nhơn, Sa Pa, Hạ Long.",
-        "badge": "🔴 TỔNG GIÁM ĐỐC (ĐÀ LẠT / QUY NHƠN)",
-        "query": '"General Manager" ("Dalat" OR "Quy Nhon" OR "Sapa") resort',
-        "url": "https://www.linkedin.com/search/results/people/?keywords=%22General%20Manager%22%20%22Dalat%22%20resort"
-    }
-]
-
-# Danh bạ trực tiếp các Resort 5★ Trọng điểm
-HOTEL_DIRECTORIES = [
-    ("Hilton Da Nang", "Hilton Da Nang", "Đà Nẵng", "https://www.linkedin.com/company/hilton-da-nang/people/"),
-    ("InterContinental Danang", "InterContinental Danang Sun Peninsula Resort", "Đà Nẵng", "https://www.linkedin.com/company/intercontinental-danang-sun-peninsula-resort/people/"),
-    ("Furama Resort Danang", "Furama Resort Danang", "Đà Nẵng", "https://www.linkedin.com/company/furama-resort-danang/people/"),
-    ("Four Seasons The Nam Hai", "Four Seasons Resort The Nam Hai", "Hội An", "https://www.linkedin.com/company/four-seasons-resort-the-nam-hai-hoi-an-vietnam/people/"),
-    ("Hyatt Regency Danang", "Hyatt Regency Danang Resort & Spa", "Đà Nẵng", "https://www.linkedin.com/company/hyatt-regency-danang-resort-and-spa/people/"),
-    ("Pullman Danang", "Pullman Danang Beach Resort", "Đà Nẵng", "https://www.linkedin.com/company/pullman-danang-beach-resort/people/"),
-    ("Shilla Monogram Danang", "Shilla Monogram Quangnam Danang", "Đà Nẵng", "https://www.linkedin.com/company/shilla-monogram-danang/people/"),
-    ("Alma Resort Cam Ranh", "Alma Resort Cam Ranh", "Cam Ranh", "https://www.linkedin.com/company/alma-resort-cam-ranh/people/"),
-    ("The Anam Cam Ranh", "The Anam Cam Ranh", "Cam Ranh", "https://www.linkedin.com/company/the-anam/people/"),
-    ("JW Marriott Phu Quoc", "JW Marriott Phu Quoc Emerald Bay", "Phú Quốc", "https://www.linkedin.com/company/jw-marriott-phu-quoc-emerald-bay/people/"),
-    ("Regent Phu Quoc", "Regent Phu Quoc", "Phú Quốc", "https://www.linkedin.com/company/regentphuquoc/people/"),
-    ("Centara Mirage Mui Ne", "Centara Mirage Resort Mui Ne", "Phan Thiết", "https://www.linkedin.com/company/centara-mirage-resort-mui-ne/people/"),
-    ("Ana Mandara Dalat", "Ana Mandara Villas Dalat Resort & Spa", "Đà Lạt", "https://www.linkedin.com/company/ana-mandara-villas-dalat-resort-spa/people/"),
-    ("Banyan Tree Lang Co", "Banyan Tree & Angsana Lang Co", "Lăng Cô", "https://www.linkedin.com/company/banyan-tree-lang-co/people/"),
-    ("Azerai La Residence Hue", "Azerai La Residence Hue", "Huế", "https://www.linkedin.com/company/azerai-la-residence-hue/people/"),
-    ("Sofitel Legend Metropole", "Sofitel Legend Metropole Hanoi", "Hà Nội", "https://www.linkedin.com/company/sofitel-legend-metropole-hanoi/people/"),
-    ("Capella Hanoi", "Capella Hanoi", "Hà Nội", "https://www.linkedin.com/company/capella-hanoi/people/")
-]
-
-
 # ── SIDEBAR ĐIỀU KHIỂN ────────────────────────────────────────────────
 with st.sidebar:
     if os.path.exists("static/logo.jpg"):
@@ -233,11 +163,13 @@ with st.sidebar:
         </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("""
+    autopilot_on = is_autopilot_active()
+    status_badge = "🟢 ĐANG CHẠY 24/7/365" if autopilot_on else "⚪ TẠM DỪNG (THỦ CÔNG)"
+    st.markdown(f"""
     <div style="margin-bottom:18px; text-align:center;">
-      <div style="font-size:9px;letter-spacing:2px;color:#888;text-transform:uppercase;">LinkedIn VIP Growth System</div>
+      <div style="font-size:9px;letter-spacing:2px;color:#888;text-transform:uppercase;">Hệ Thống VIP Auto-Connect</div>
       <div style="font-size:10px;color:#FFFFFF;background:#1A0506;border:1px solid #E50914;border-radius:4px;padding:4px 8px;margin-top:8px;font-weight:700;">
-        ⚡ KẾT NỐI TRỰC TIẾP — 100% HIỆU QUẢ THẬT
+        ⚡ {status_badge}
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -252,11 +184,20 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     st.divider()
+    st.markdown('<p style="font-size:10px;letter-spacing:1.5px;color:#E50914;text-transform:uppercase;font-weight:700;">ĐIỀU KHIỂN AUTO-PILOT 24/7/365</p>', unsafe_allow_html=True)
+    toggle_val = st.toggle("Bật Tự Động Hóa 24/7/365", value=autopilot_on, help="Tự động gửi 15-20 kết nối mỗi ngày và báo cáo về Telegram")
+    if toggle_val != autopilot_on:
+        set_autopilot_status(toggle_val)
+        st.rerun()
+
+    st.divider()
     st.markdown('<p style="font-size:10px;letter-spacing:1.5px;color:#E50914;text-transform:uppercase;font-weight:700;">HẠN NGẠCH AN TOÀN TRONG NGÀY</p>', unsafe_allow_html=True)
-    st.markdown("""
+    quota = get_daily_quota_status()
+    st.markdown(f"""
     <div style="background:#111; border:1px solid #222; padding:12px; border-radius:4px; font-size:11px;">
-      <div style="color:#888;">Hạn ngạch khuyến nghị: <b style="color:#FFF;">15 – 20 kết nối / ngày</b></div>
-      <div style="font-size:9px; color:#666; margin-top:6px;">🛡️ Anti-Ban: Bấm kết bạn trực tiếp không kèm tin nhắn để tránh bị spam</div>
+      <div style="color:#888;">Đã bấm hôm nay: <b style="color:#FFF;">{quota['sent_today']} / {quota['max_daily']}</b></div>
+      <div style="color:#888; margin-top:4px;">Còn lại được phép kết bạn: <b style="color:#E50914;">{quota['remaining']} lượt</b></div>
+      <div style="font-size:9px; color:#666; margin-top:6px;">🛡️ Anti-Ban: Giãn cách 30s – 90s/lượt</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -270,116 +211,195 @@ with st.sidebar:
 
 
 # ── THỐNG KÊ TOP METRICS ─────────────────────────────────────────────
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("KÊNH RADAR VIP", len(RADAR_CATEGORIES), "7 kênh mục tiêu")
-c2.metric("RESORT 5★ TRỌNG ĐIỂM", len(HOTEL_DIRECTORIES), "17 khách sạn hàng đầu")
-c3.metric("CHẾ ĐỘ", "KẾT BẠN TRỰC TIẾP", "Không tin nhắn")
-c4.metric("HIỆU QUẢ", "100% LINK SỐNG", "0% Lỗi 404")
+session = get_session()
+total_vip = session.query(HotelExecutive).count()
+total_invited = session.query(HotelExecutive).filter(HotelExecutive.status == "Đã gửi kết bạn").count()
+gm_count = session.query(HotelExecutive).filter(HotelExecutive.title.like("%General Manager%") | HotelExecutive.title.like("%GM%") | HotelExecutive.title.like("%Director%")).count()
+dosm_count = session.query(HotelExecutive).filter(HotelExecutive.title.like("%Sales%") | HotelExecutive.title.like("%DOSM%") | HotelExecutive.title.like("%Commercial%")).count()
+marcom_count = session.query(HotelExecutive).filter(HotelExecutive.title.like("%Marketing%") | HotelExecutive.title.like("%Marcom%")).count()
+session.close()
+
+c1, c2, c3, c4, c5 = st.columns(5)
+c1.metric("LÃNH ĐẠO VIP ĐÃ LƯU", total_vip)
+c2.metric("ĐÃ BẤM KẾT NỐI", total_invited)
+c3.metric("TỔNG GIÁM ĐỐC (GM)", gm_count)
+c4.metric("GIÁM ĐỐC SALES & MKT", dosm_count)
+c5.metric("MARCOM / MARKETING", marcom_count)
 
 st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
-# ── TABS ĐIỀU KHIỂN CHÍNH ──────────────────────────────────────────
-tab_radar, tab_hotels, tab_logs = st.tabs([
-    "🚀 KÊNH QUÉT VIP THEO CHỨC DANH & VÙNG",
-    "🏢 BAN GIÁM ĐỐC CÁC RESORT 5★ TRỌNG ĐIỂM",
-    "📈 BÁO CÁO & NHẬT KÝ TĂNG TRƯỞNG"
+# ── 3 TABS ĐIỀU KHIỂN CHÍNH ──────────────────────────────────────────
+tab_queue, tab_backlog, tab_radars = st.tabs([
+    "🚀 TOP 20 LÃNH ĐẠO VIP HÔM NAY (LINK GỐC TỪNG NGƯỜI)",
+    "📋 DỰ BỊ (#21+)",
+    "⚡ KÊNH RADAR QUÉT THEO CHỨC DANH"
 ])
 
 
 # ─────────────────────────────────────────────────────────────────────
-# TAB 1: KÊNH QUÉT VIP THEO CHỨC DANH & VÙNG
+# TAB 1: TOP 20 HÔM NAY (LINK PERMALINK CÁ NHÂN GỐC TỪNG NGƯỜI)
 # ─────────────────────────────────────────────────────────────────────
-with tab_radar:
+with tab_queue:
+    hb = get_heartbeat_status()
+    with st.expander("📡 TIẾN TRÌNH THỜI GIAN THỰC & NHẬT KÝ HOẠT ĐỘNG 24/7/365", expanded=True):
+        hb_col1, hb_col2 = st.columns([3, 1])
+        with hb_col1:
+            st.markdown(f"""
+            **Trạng thái Auto-Pilot:** ⚙️ *{hb.get('current_task', 'Đang giám sát và sẵn sàng chu kỳ quét mới')}*  
+            **Ghi nhận lần cuối:** `{hb.get('last_heartbeat', '—')}`  
+            **Cơ chế:** `🟢 100% Link Profile Cá Nhân Gốc (Bê Trần, Nguyen The, Doo Hyun Shim, Manh Quan Le...)`
+            """)
+        with hb_col2:
+            if st.button("🔄 Làm mới trạng thái", key="refresh_monitor_btn", use_container_width=True):
+                st.rerun()
+
+        st.markdown("<div style='font-size:11px;color:#E50914;font-weight:bold;margin:8px 0 4px;'>📜 HOẠT ĐỘNG HỆ THỐNG GẦN ĐÂY (ACTIVITY STREAM):</div>", unsafe_allow_html=True)
+        activities = hb.get("recent_activities", [])
+        if activities:
+            for act in activities[:8]:
+                st.caption(f"• `{act}`")
+        else:
+            st.caption("• Hệ thống đang chạy giám sát 24/7/365...")
+
+    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+
     st.markdown("""
     <div style="background:linear-gradient(135deg, #121212 0%, #0A0A0A 100%); border:1px solid #E50914; border-radius:4px; padding:20px 24px; margin-bottom:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
         <div>
-          <div style="font-size:10px; letter-spacing:2px; color:#E50914; font-weight:700; text-transform:uppercase;">TRUY CẬP TRỰC TIẾP — DANH SÁCH THẬT 100%</div>
-          <div style="font-family:'Montserrat',sans-serif; font-size:24px; font-weight:700; color:#FFF; margin:4px 0;">Kênh Quét Lãnh Đạo Khách Sạn VIP Theo Chức Danh</div>
-          <div style="font-size:12px; color:#999;">Mỗi kênh mở ra toàn bộ danh sách hàng chục Tổng Giám Đốc (GM), DOSM, Marcom Manager thật tại khu vực mục tiêu kèm nút Connect màu xanh có sẵn.</div>
+          <div style="font-size:10px; letter-spacing:2px; color:#E50914; font-weight:700; text-transform:uppercase;">100% LINK PROFILE GỐC TỪNG NGƯỜI CỤ THỂ</div>
+          <div style="font-family:'Montserrat',sans-serif; font-size:24px; font-weight:700; color:#FFF; margin:4px 0;">Top 20 Lãnh Đạo VIP Khách Sạn & Resort Hôm Nay</div>
+          <div style="font-size:12px; color:#999;">Mỗi nút bấm dẫn thẳng tới trang cá nhân chính thức của đúng vị sếp đó trên LinkedIn (Bê Trần, Nguyen The, Doo Hyun Shim, Manh Quan Le, Dibi Le...).</div>
         </div>
         <div>
-          <div style="font-size:10px; color:#4a7c59; font-weight:700;">● TỐC ĐỘ: 1-CLICK MỞ TOÀN BỘ DANH SÁCH</div>
-          <div style="font-size:11px; color:#888; margin-top:4px;">Chỉ cần bấm nút <b>Connect</b> trên LinkedIn</div>
+          <div style="font-size:10px; color:#4a7c59; font-weight:700;">● CLOUD SERVER: ACTIVE 24/7/365</div>
+          <div style="font-size:11px; color:#888; margin-top:4px;">Giới hạn an toàn: <b>20 kết nối / ngày</b></div>
         </div>
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    for r in RADAR_CATEGORIES:
-        with st.container():
-            st.markdown(f"""
-            <div style="background:#111; border:1px solid #222; border-left:3px solid #E50914; border-radius:4px; padding:18px 22px; margin-bottom:14px;">
-              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-                <div style="max-width:70%;">
-                  <div style="font-size:16px; font-weight:700; color:#FFF;">{r['title']} <span style="font-size:10px; color:#E50914; border:1px solid #E50914; padding:2px 6px; border-radius:3px; margin-left:8px;">{r['badge']}</span></div>
-                  <div style="font-size:12px; color:#BBB; margin-top:4px;">{r['desc']}</div>
-                  <div style="font-size:11px; color:#666; margin-top:6px; font-family:monospace;">🔍 Query: {r['query']}</div>
+    queue_leads = get_daily_queue_20()
+
+    col_act1, col_act2 = st.columns([3, 1])
+    with col_act1:
+        st.markdown(f"**Hàng đợi hôm nay:** `{len(queue_leads)} lãnh đạo VIP` *(Khi kết nối, hệ thống tự động đẩy người #21 lên bù)*")
+    with col_act2:
+        if st.button("🚀 BẮT ĐẦU AUTO-PILOT NGAY BÂY GIỜ", type="primary", use_container_width=True):
+            if not queue_leads:
+                st.warning("Hiện không còn người nào trong hàng đợi chưa kết bạn!")
+            else:
+                progress_bar = st.progress(0)
+                status_box = st.empty()
+                success_count = 0
+                
+                for idx, lead in enumerate(queue_leads):
+                    status_box.markdown(f"⏳ **[{idx+1}/{len(queue_leads)}]** Đang kết nối trực tiếp tới: **{lead['name']}** ({lead['title']} · {lead['company']})...")
+                    ok, msg = send_direct_connection(lead["id"])
+                    if ok:
+                        success_count += 1
+                    progress_bar.progress((idx + 1) / len(queue_leads))
+                    time.sleep(1.0)
+                
+                st.success(f"🎉 ĐÃ HOÀN TẤT KẾT NỐI TỰ ĐỘNG TỚI {success_count} LÃNH ĐẠO VIP!")
+                send_telegram_daily_report()
+                time.sleep(1.5)
+                st.rerun()
+
+    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+
+    if not queue_leads:
+        st.info("✅ Bạn đã kết bạn hết danh sách hiện tại trong ngày. Hãy chuyển sang Tab 'Dự Bị (#21+)' để xem danh sách chờ!")
+    else:
+        for lead in queue_leads:
+            with st.container():
+                st.markdown(f"""
+                <div style="background:#111; border:1px solid #222; border-left:3px solid #E50914; border-radius:4px; padding:16px 20px; margin-bottom:12px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <div>
+                      <div style="font-size:16px; font-weight:700; color:#FFF;">#{lead['queue_index']}. {lead['name']} <span style="font-size:10px; color:#E50914; border:1px solid #E50914; padding:2px 6px; border-radius:3px; margin-left:8px;">{lead['priority_badge']}</span></div>
+                      <div style="font-size:13px; color:#E50914; font-weight:600; margin-top:2px;">{lead['title']} · <span style="color:#FFF;">{lead['company']}</span></div>
+                      <div style="font-size:11px; color:#888; margin-top:4px;">📍 {lead['location']} | Điểm ưu tiên: <b style="color:#FFF;">{lead['lead_score']}đ</b></div>
+                    </div>
+                    <div style="text-align:right;">
+                      <a href="{lead['profile_url']}" target="_blank"
+                         style="display:inline-block; background:#E50914; color:#FFF; padding:9px 20px; border-radius:4px; font-size:12px; text-decoration:none; font-weight:700; box-shadow:0 2px 8px rgba(229,9,20,0.4);">
+                         ➕ Mở Profile & Bấm Connect
+                      </a>
+                    </div>
+                  </div>
                 </div>
-                <div style="text-align:right;">
-                  <a href="{r['url']}" target="_blank"
-                     style="display:inline-block; background:#E50914; color:#FFF; padding:10px 22px; border-radius:4px; font-size:13px; text-decoration:none; font-weight:700; box-shadow:0 4px 12px rgba(229,9,20,0.4);">
-                     ⚡ MỞ DANH SÁCH & BẤM KẾT BẠN
-                  </a>
-                </div>
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────────────
-# TAB 2: BAN GIÁM ĐỐC CÁC RESORT 5★ TRỌNG ĐIỂM
+# TAB 2: DỰ BỊ (#21+)
 # ─────────────────────────────────────────────────────────────────────
-with tab_hotels:
+with tab_backlog:
     st.markdown("""
     <div style="background:#111; border:1px solid #222; border-left:4px solid #FFA500; border-radius:4px; padding:16px 20px; margin-bottom:18px;">
-      <div style="font-size:15px; font-weight:700; color:#FFF;">🏢 Danh Bạ Ban Giám Đốc 17 Khách Sạn & Resort 5 Sao Trọng Điểm</div>
+      <div style="font-size:15px; font-weight:700; color:#FFF;">📋 Hàng Đợi Dự Bị (Xếp hàng từ vị trí #21 trở đi)</div>
       <div style="font-size:12px; color:#AAA; margin-top:4px;">
-        Mở thẳng trang nhân sự chính thức của từng khách sạn trên LinkedIn — Toàn bộ Tổng Giám Đốc, Giám Đốc Sales, Marketing đang làm việc tại đó sẽ hiện ra cùng lúc.
+        Toàn bộ các General Manager, DOSM, Marcom Manager đã được lưu với <b>Link Profile Cá Nhân Chính Xác 100%</b>. Khi bạn kết nối 1 người ở Tab 1, người đứng đầu danh sách này sẽ <b>tự động được đẩy bù lên Top 20</b>.
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    cols = st.columns(2)
-    for idx, (short_name, full_name, city, dir_url) in enumerate(HOTEL_DIRECTORIES):
-        with cols[idx % 2]:
+    backlog_leads = get_backlog_queue_21_plus(limit=200)
+    st.markdown(f"**Tổng số lãnh đạo đang xếp hàng dự bị:** `{len(backlog_leads)} người`")
+
+    if not backlog_leads:
+        st.info("Hàng đợi dự bị hiện đang trống.")
+    else:
+        for lead in backlog_leads:
+            with st.container():
+                st.markdown(f"""
+                <div style="background:#0D0D0D; border:1px solid #222; border-radius:4px; padding:12px 18px; margin-bottom:8px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <div>
+                      <div style="font-size:14px; font-weight:700; color:#DDD;">#{lead['queue_index']}. {lead['name']} <span style="font-size:9px; color:#888; border:1px solid #444; padding:2px 5px; border-radius:3px; margin-left:6px;">{lead['priority_badge']}</span></div>
+                      <div style="font-size:12px; color:#BBB; margin-top:2px;">{lead['title']} · <b style="color:#FFF;">{lead['company']}</b> ({lead['city']})</div>
+                    </div>
+                    <div>
+                      <a href="{lead['profile_url']}" target="_blank"
+                         style="display:inline-block; background:#E50914; color:#FFF; padding:6px 14px; border-radius:4px; font-size:11px; text-decoration:none; font-weight:700;">
+                         ➕ Mở Profile & Connect
+                      </a>
+                    </div>
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# TAB 3: KÊNH RADAR QUÉT THEO CHỨC DANH
+# ─────────────────────────────────────────────────────────────────────
+with tab_radars:
+    st.markdown("### ⚡ Kênh Radar Mở Rộng — Quét Toàn Bộ Danh Sách Trên LinkedIn")
+    
+    RADARS = [
+        ("👑 TỔNG GIÁM ĐỐC (GM) — ĐÀ NẴNG", "Tất cả General Manager tại khách sạn & resort Đà Nẵng", "https://www.linkedin.com/search/results/people/?keywords=%22General%20Manager%22%20%22Da%20Nang%22%20hotel%20resort"),
+        ("👑 TỔNG GIÁM ĐỐC (GM) — HỘI AN & HUẾ", "Tất cả General Manager tại resort Hội An, Huế & Lăng Cô", "https://www.linkedin.com/search/results/people/?keywords=%22General%20Manager%22%20%22Hoi%20An%22%20resort"),
+        ("🎯 GIÁM ĐỐC SALES & MARKETING (DOSM) — MIỀN TRUNG", "Những người trực tiếp nắm ngân sách và quyết định thuê chụp ảnh", "https://www.linkedin.com/search/results/people/?keywords=%22Director%20of%20Sales%22%20%22Da%20Nang%22%20hotel"),
+        ("📸 MARCOM & PR MANAGERS — ĐÀ NẴNG & HỘI AN", "Trưởng phòng truyền thông trực tiếp duyệt hình ảnh visual", "https://www.linkedin.com/search/results/people/?keywords=%22Marketing%20Manager%22%20%22Da%20Nang%22%20hotel"),
+        ("🏖️ TỔNG GIÁM ĐỐC (GM) — NHA TRANG, CAM RANH, PHÚ QUỐC", "General Manager các đại resort tại Nha Trang, Cam Ranh, Phú Quốc", "https://www.linkedin.com/search/results/people/?keywords=%22General%20Manager%22%20%22Phu%20Quoc%22%20resort")
+    ]
+
+    for title, desc, url in RADARS:
+        with st.container():
             st.markdown(f"""
-            <div style="background:#0D0D0D; border:1px solid #222; border-radius:4px; padding:14px 18px; margin-bottom:12px;">
-              <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+            <div style="background:#111; border:1px solid #222; border-left:3px solid #E50914; border-radius:4px; padding:16px 20px; margin-bottom:10px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <div>
-                  <div style="font-size:15px; font-weight:700; color:#FFF;">{short_name} <span style="font-size:10px; color:#888;">({city})</span></div>
-                  <div style="font-size:11px; color:#888; margin-top:2px;">{full_name}</div>
+                  <div style="font-size:15px; font-weight:700; color:#FFF;">{title}</div>
+                  <div style="font-size:12px; color:#888; margin-top:2px;">{desc}</div>
                 </div>
                 <div>
-                  <a href="{dir_url}" target="_blank"
-                     style="display:inline-block; background:#1C1C1C; border:1px solid #E50914; color:#FFF; padding:8px 14px; border-radius:4px; font-size:11px; text-decoration:none; font-weight:700;">
-                     ➕ Mở Ban Giám Đốc
+                  <a href="{url}" target="_blank"
+                     style="display:inline-block; background:#E50914; color:#FFF; padding:8px 18px; border-radius:4px; font-size:12px; text-decoration:none; font-weight:700;">
+                     ⚡ Mở Toàn Bộ Danh Sách
                   </a>
                 </div>
               </div>
             </div>
             """, unsafe_allow_html=True)
-
-
-# ─────────────────────────────────────────────────────────────────────
-# TAB 3: BÁO CÁO & NHẬT KÝ TĂNG TRƯỞNG
-# ─────────────────────────────────────────────────────────────────────
-with tab_logs:
-    st.markdown("### 📈 Nhật ký Kết nối & Báo cáo Tăng trưởng")
-    col_t1, col_t2 = st.columns([3, 1])
-    with col_t1:
-        st.markdown("Bản tin thống kê tự động bắn qua Telegram mỗi ngày vào lúc 21:00.")
-    with col_t2:
-        if st.button("📲 BẮN BÁO CÁO TELEGRAM NGAY", type="primary", use_container_width=True):
-            ok = send_telegram_daily_report()
-            if ok:
-                st.success("✅ Đã gửi báo cáo về Telegram!")
-            else:
-                st.warning("⚠️ Chưa nhận được Chat ID. Vui lòng mở Bot Telegram bấm /start!")
-
-    st.markdown("""
-    #### 💡 CHIẾN LƯỢC TĂNG VIEW BÀI ĐĂNG CHỤP ẢNH HIỆU QUẢ CAO NHẤT:
-    1. **Mỗi ngày dành 5 phút:** Mở 1 kênh Radar (ví dụ: `👑 TỔNG GIÁM ĐỐC ĐÀ NẴNG`).
-    2. **Bấm Connect 15 – 20 người đầu tiên** (chỉ bấm nút *Connect* trực tiếp, không gửi tin nhắn chào hàng).
-    3. **Sau 1 tháng (400 – 500 bạn bè là GM & DOSM):** Khi anh đăng tải bất kỳ bộ ảnh chụp khách sạn / resort nào lên profile [Hà Phong (Photographer)](https://www.linkedin.com/in/hà-phong-9119933b8), bài viết sẽ hiện trực tiếp lên Newfeed của hàng trăm người có quyền thuê và ra quyết định trong ngành!
-    """)
