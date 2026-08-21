@@ -1,9 +1,19 @@
 [server]
-port = 8080
-address = "0.0.0.0"
 headless = true
+port = 8501
+address = "0.0.0.0"
 enableCORS = false
 enableXsrfProtection = false
+fileWatcherType = "none"
+runOnSave = false
 
 [browser]
 gatherUsageStats = false
+
+[theme]
+base = "dark"
+primaryColor = "#E50914"
+backgroundColor = "#050505"
+secondaryBackgroundColor = "#111111"
+textColor = "#FFFFFF"
+font = "sans serif"

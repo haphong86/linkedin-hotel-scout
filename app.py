@@ -8,6 +8,20 @@ import os
 import sys
 import time
 import pandas as pd
+import socket
+
+# Ép buộc Socket phân giải IPv4 trên Railway/Linux Container
+_orig_getaddrinfo = socket.getaddrinfo
+def _ipv4_only_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    if family == 0 or family == socket.AF_UNSPEC:
+        family = socket.AF_INET
+    try:
+        return _orig_getaddrinfo(host, port, family, type, proto, flags)
+    except Exception:
+        return _orig_getaddrinfo(host, port, 0, type, proto, flags)
+
+socket.getaddrinfo = _ipv4_only_getaddrinfo
+
 import streamlit as st
 from datetime import datetime, date
 
