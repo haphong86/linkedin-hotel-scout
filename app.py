@@ -1,6 +1,7 @@
 """
 app.py — LinkedIn Hotel VIP Auto-Scout & Growth Bot (Hà Phong Visuals)
-Nguyên tắc cốt lõi: 100% LINK THẬT ĐÃ XÁC THỰC — TUYỆT ĐỐI KHÔNG LƯU LINK RÁC / 404
+BỘ MÁY TỰ ĐỘNG HÓA 100% QUA LINKEDIN VOYAGER API (LI_AT COOKIE)
+Tự động cào hàng trăm General Manager, DOSM, Marcom Manager thật 100% vào hệ thống — Hoàn toàn tự động!
 Chạy: streamlit run app.py
 """
 import os
@@ -31,11 +32,12 @@ from engine.linkedin_bot import (
 )
 from engine.priority_queue import get_daily_queue_20, get_backlog_queue_21_plus
 from engine.telegram_notifier import send_telegram_daily_report
+from engine.linkedin_api import auto_scan_linkedin_leads, get_li_at_cookie, set_li_at_cookie
 from scheduler.heartbeat_tracker import get_heartbeat_status, log_activity
 
 # ── CẤU HÌNH TRANG STREAMLIT ─────────────────────────────────────────
 st.set_page_config(
-    page_title="Hà Phong Visuals · LinkedIn VIP Growth Bot",
+    page_title="Hà Phong Visuals · LinkedIn VIP Auto-Scout Bot",
     page_icon="👁️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -156,11 +158,13 @@ with st.sidebar:
         </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("""
+    has_cookie = bool(get_li_at_cookie())
+    status_cookie = "🟢 ĐÃ KẾT NỐI LINKEDIN" if has_cookie else "🔴 CHƯA NHẬP COOKIE"
+    st.markdown(f"""
     <div style="margin-bottom:18px; text-align:center;">
-      <div style="font-size:9px;letter-spacing:2px;color:#888;text-transform:uppercase;">LinkedIn VIP Growth System</div>
+      <div style="font-size:9px;letter-spacing:2px;color:#888;text-transform:uppercase;">LinkedIn Auto-Scout Engine</div>
       <div style="font-size:10px;color:#FFFFFF;background:#1A0506;border:1px solid #E50914;border-radius:4px;padding:4px 8px;margin-top:8px;font-weight:700;">
-        ⚡ 100% LINK THẬT — 0% LỖI 404
+        ⚡ {status_cookie}
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -179,9 +183,9 @@ with st.sidebar:
     quota = get_daily_quota_status()
     st.markdown(f"""
     <div style="background:#111; border:1px solid #222; padding:12px; border-radius:4px; font-size:11px;">
-      <div style="color:#888;">Đã bấm hôm nay: <b style="color:#FFF;">{quota['sent_today']} / {quota['max_daily']}</b></div>
+      <div style="color:#888;">Đã kết nối hôm nay: <b style="color:#FFF;">{quota['sent_today']} / {quota['max_daily']}</b></div>
       <div style="color:#888; margin-top:4px;">Còn lại được phép kết bạn: <b style="color:#E50914;">{quota['remaining']} lượt</b></div>
-      <div style="font-size:9px; color:#666; margin-top:6px;">🛡️ Anti-Ban: Bấm kết bạn trực tiếp (Không gửi tin nhắn spam)</div>
+      <div style="font-size:9px; color:#666; margin-top:6px;">🛡️ Anti-Ban: Bấm kết bạn trực tiếp (Không kèm tin nhắn spam)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -201,86 +205,108 @@ total_invited = session.query(HotelExecutive).filter(HotelExecutive.status == "�
 session.close()
 
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("HỒ SƠ ĐÃ XÁC THỰC 100%", total_vip, "0% link 404")
+c1.metric("HỒ SƠ ĐÃ NẠP TỰ ĐỘNG", total_vip, "100% Link Thật")
 c2.metric("ĐÃ BẤM KẾT NỐI", total_invited)
-c3.metric("KÊNH QUÉT TRỰC TIẾP", "5 Kênh Lớn", "50+ sếp/kênh")
-c4.metric("CHẾ ĐỘ KẾT NỐI", "DIRECT CONNECT", "An toàn 100%")
+c3.metric("CHẾ ĐỘ", "AUTO-SCOUT API", "Tự động 100%")
+c4.metric("ANTI-BAN", "DIRECT CONNECT", "Không gửi tin spam")
 
 st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
 # ── 3 TABS ĐIỀU KHIỂN CHÍNH ──────────────────────────────────────────
-tab_radars, tab_queue, tab_importer = st.tabs([
-    "⚡ KÊNH QUÉT VIP TRỰC TIẾP (MỞ HÀNG TRĂM SẾP LỚN)",
-    "📋 DANH BẠ HỒ SƠ ĐÃ XÁC THỰC 100%",
-    "➕ THÊM NHANH LINK PROFILE VÀO HÀNG ĐỢI"
+tab_scanner, tab_queue, tab_cookie = st.tabs([
+    "🚀 BỘ MÁY QUÉT TỰ ĐỘNG 100% (AUTO-SCOUT)",
+    "📋 HÀNG ĐỢI KẾT NỐI TOP 20 & DỰ BỊ",
+    "🔑 CẤU HÌNH COOKIE LI_AT TỰ ĐỘNG"
 ])
 
 
 # ─────────────────────────────────────────────────────────────────────
-# TAB 1: KÊNH QUÉT VIP TRỰC TIẾP (RADARS)
+# TAB 1: BỘ MÁY QUÉT TỰ ĐỘNG 100% (AUTO-SCOUT)
 # ─────────────────────────────────────────────────────────────────────
-with tab_radars:
+with tab_scanner:
     st.markdown("""
     <div style="background:linear-gradient(135deg, #121212 0%, #0A0A0A 100%); border:1px solid #E50914; border-radius:4px; padding:20px 24px; margin-bottom:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
         <div>
-          <div style="font-size:10px; letter-spacing:2px; color:#E50914; font-weight:700; text-transform:uppercase;">TỐC ĐỘ CAO — DANH SÁCH THẬT 100% TRÊN LINKEDIN</div>
-          <div style="font-family:'Montserrat',sans-serif; font-size:24px; font-weight:700; color:#FFF; margin:4px 0;">Kênh Quét Hàng Trăm Lãnh Đạo Khách Sạn VIP</div>
-          <div style="font-size:12px; color:#999;">Mỗi kênh mở ra toàn bộ danh sách hàng chục Tổng Giám Đốc (GM), DOSM, Marcom Manager thật kèm nút Connect màu xanh có sẵn.</div>
-        </div>
-        <div>
-          <div style="font-size:10px; color:#4a7c59; font-weight:700;">● TỐC ĐỘ: 1-CLICK MỞ TOÀN BỘ DANH SÁCH</div>
-          <div style="font-size:11px; color:#888; margin-top:4px;">Chỉ cần bấm nút <b>Connect</b> trên LinkedIn</div>
+          <div style="font-size:10px; letter-spacing:2px; color:#E50914; font-weight:700; text-transform:uppercase;">TỰ ĐỘNG HÓA 100% QUA LINKEDIN VOYAGER API</div>
+          <div style="font-family:'Montserrat',sans-serif; font-size:24px; font-weight:700; color:#FFF; margin:4px 0;">Tự Động Quét & Bóc Tách Hàng Trăm Sếp Lớn</div>
+          <div style="font-size:12px; color:#999;">Bot tự động tìm kiếm trên LinkedIn, bóc tách chính xác toàn bộ Họ Tên, Chức Danh, Khách Sạn và Đường Link Profile Thật 100% nạp vào hệ thống mà anh không cần copy paste thủ công!</div>
         </div>
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    RADARS = [
-        ("👑 TỔNG GIÁM ĐỐC (GM) — ĐÀ NẴNG", "Tất cả General Manager tại khách sạn & resort Đà Nẵng (Bê Trần, Nguyen The, Doo Hyun Shim, Manh Quan Le...)", "https://www.linkedin.com/search/results/people/?keywords=%22General%20Manager%22%20%22Da%20Nang%22%20hotel%20resort"),
-        ("👑 TỔNG GIÁM ĐỐC (GM) — HỘI AN & HUẾ", "Tất cả General Manager tại resort Hội An, Nam Hội An, Huế & Lăng Cô", "https://www.linkedin.com/search/results/people/?keywords=%22General%20Manager%22%20%22Hoi%20An%22%20resort"),
-        ("🎯 GIÁM ĐỐC SALES & MARKETING (DOSM) — MIỀN TRUNG", "Những người trực tiếp nắm giữ ngân sách và quyết định thuê photographer chụp ảnh", "https://www.linkedin.com/search/results/people/?keywords=%22Director%20of%20Sales%22%20%22Da%20Nang%22%20hotel"),
-        ("📸 MARCOM & PR MANAGERS — ĐÀ NẴNG & HỘI AN", "Trưởng phòng truyền thông trực tiếp duyệt hình ảnh visual và booking", "https://www.linkedin.com/search/results/people/?keywords=%22Marketing%20Manager%22%20%22Da%20Nang%22%20hotel"),
-        ("🏖️ TỔNG GIÁM ĐỐC (GM) — NHA TRANG, CAM RANH, PHÚ QUỐC", "General Manager các đại resort tại Nha Trang, Cam Ranh, Phú Quốc, Phan Thiết", "https://www.linkedin.com/search/results/people/?keywords=%22General%20Manager%22%20%22Phu%20Quoc%22%20resort")
-    ]
+    col_s1, col_s2 = st.columns([2, 1])
+    with col_s1:
+        target_role = st.selectbox(
+            "Chọn Nhóm Chức Danh Cần Quét Tự Động:",
+            [
+                '"General Manager" "Da Nang" hotel resort',
+                '"General Manager" "Hoi An" resort',
+                '"Director of Sales" "Da Nang" hotel',
+                '"Marketing Manager" "Da Nang" hotel',
+                '"General Manager" "Nha Trang" resort',
+                '"General Manager" "Phu Quoc" resort',
+                '"General Manager" "Phan Thiet" resort',
+                '"General Manager" "Dalat" resort'
+            ]
+        )
+    with col_s2:
+        target_city = st.selectbox("Gán Khu Vực:", ["Đà Nẵng", "Hội An", "Huế", "Nha Trang", "Phú Quốc", "Phan Thiết", "Đà Lạt"])
 
-    for title, desc, url in RADARS:
-        with st.container():
-            st.markdown(f"""
-            <div style="background:#111; border:1px solid #222; border-left:3px solid #E50914; border-radius:4px; padding:18px 22px; margin-bottom:14px;">
-              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-                <div style="max-width:70%;">
-                  <div style="font-size:16px; font-weight:700; color:#FFF;">{title}</div>
-                  <div style="font-size:12px; color:#BBB; margin-top:4px;">{desc}</div>
-                </div>
-                <div style="text-align:right;">
-                  <a href="{url}" target="_blank"
-                     style="display:inline-block; background:#E50914; color:#FFF; padding:10px 22px; border-radius:4px; font-size:13px; text-decoration:none; font-weight:700; box-shadow:0 4px 12px rgba(229,9,20,0.4);">
-                     ⚡ MỞ DANH SÁCH & BẤM KẾT BẠN
-                  </a>
-                </div>
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
+    if st.button("🚀 BẮT ĐẦU QUÉT TỰ ĐỘNG & NẠP VÀO HÀNG ĐỢI", type="primary", use_container_width=True):
+        with st.spinner("🤖 Bot đang kết nối LinkedIn Voyager API và tự động bóc tách các profile thật..."):
+            saved, msg = auto_scan_linkedin_leads(target_role, city=target_city, max_results=25)
+            if saved > 0:
+                st.success(msg)
+                time.sleep(1.5)
+                st.rerun()
+            else:
+                st.warning(msg)
 
 
 # ─────────────────────────────────────────────────────────────────────
-# TAB 2: DANH BẠ HỒ SƠ ĐÃ XÁC THỰC 100%
+# TAB 2: HÀNG ĐỢI KẾT NỐI TOP 20 & DỰ BỊ
 # ─────────────────────────────────────────────────────────────────────
 with tab_queue:
     st.markdown("""
-    <div style="background:#111; border:1px solid #222; border-left:4px solid #4CAF50; border-radius:4px; padding:16px 20px; margin-bottom:18px;">
-      <div style="font-size:15px; font-weight:700; color:#FFF;">✅ Danh Sách Profile Cá Nhân Đã Kiểm Tra & Hoạt Động 100% (0% Lỗi 404)</div>
+    <div style="background:#111; border:1px solid #222; border-left:4px solid #E50914; border-radius:4px; padding:16px 20px; margin-bottom:18px;">
+      <div style="font-size:15px; font-weight:700; color:#FFF;">📋 Danh Sách Profile Cá Nhân Thật Đã Được Bot Nạp Tự Động</div>
       <div style="font-size:12px; color:#AAA; margin-top:4px;">
-        Toàn bộ link dưới đây là <b>đường dẫn cá nhân thực tế đã được kiểm tra</b>. Bấm vào sẽ mở thẳng trang cá nhân của vị sếp đó.
+        Toàn bộ link dưới đây được <b>bóc tách tự động 100% từ LinkedIn</b>. Anh có thể bấm kết nối trực tiếp hoặc để Bot tự động chạy ngầm mỗi ngày.
       </div>
     </div>
     """, unsafe_allow_html=True)
 
     queue_leads = get_daily_queue_20()
 
+    col_act1, col_act2 = st.columns([3, 1])
+    with col_act1:
+        st.markdown(f"**Hàng đợi hôm nay:** `{len(queue_leads)} lãnh đạo VIP`")
+    with col_act2:
+        if st.button("⚡ BẤM KẾT BẠN TỰ ĐỘNG TOP 20", type="primary", use_container_width=True):
+            if not queue_leads:
+                st.warning("Hiện không còn người nào trong hàng đợi chưa kết bạn!")
+            else:
+                progress_bar = st.progress(0)
+                status_box = st.empty()
+                success_count = 0
+                for idx, lead in enumerate(queue_leads):
+                    status_box.markdown(f"⏳ **[{idx+1}/{len(queue_leads)}]** Đang kết bạn tới: **{lead['name']}** ({lead['company']})...")
+                    ok, msg = send_direct_connection(lead["id"])
+                    if ok:
+                        success_count += 1
+                    progress_bar.progress((idx + 1) / len(queue_leads))
+                    time.sleep(1.0)
+                st.success(f"🎉 Đã hoàn tất gửi kết bạn tới {success_count} lãnh đạo VIP!")
+                send_telegram_daily_report()
+                time.sleep(1.5)
+                st.rerun()
+
+    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+
     if not queue_leads:
-        st.info("Chưa có hồ sơ nào.")
+        st.info("Hàng đợi hiện đang trống. Hãy qua Tab 1 để Quét thêm!")
     else:
         for lead in queue_leads:
             with st.container():
@@ -288,7 +314,7 @@ with tab_queue:
                 <div style="background:#111; border:1px solid #222; border-left:3px solid #E50914; border-radius:4px; padding:16px 20px; margin-bottom:12px;">
                   <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div>
-                      <div style="font-size:16px; font-weight:700; color:#FFF;">#{lead['queue_index']}. {lead['name']} <span style="font-size:10px; color:#4CAF50; border:1px solid #4CAF50; padding:2px 6px; border-radius:3px; margin-left:8px;">✓ 100% LIVE PROFILE</span></div>
+                      <div style="font-size:16px; font-weight:700; color:#FFF;">#{lead['queue_index']}. {lead['name']} <span style="font-size:10px; color:#4CAF50; border:1px solid #4CAF50; padding:2px 6px; border-radius:3px; margin-left:8px;">✓ 100% VERIFIED PROFILE</span></div>
                       <div style="font-size:13px; color:#E50914; font-weight:600; margin-top:2px;">{lead['title']} · <span style="color:#FFF;">{lead['company']}</span></div>
                       <div style="font-size:11px; color:#888; margin-top:4px;">📍 {lead['location']} | Link: <code style="color:#FFF;">{lead['profile_url']}</code></div>
                     </div>
@@ -304,47 +330,33 @@ with tab_queue:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# TAB 3: THÊM NHANH LINK PROFILE VÀO HÀNG ĐỢI
+# TAB 3: CẤU HÌNH COOKIE LI_AT TỰ ĐỘNG
 # ─────────────────────────────────────────────────────────────────────
-with tab_importer:
-    st.markdown("### ➕ Thêm Nhanh Profile Lãnh Đạo Mới Vào Hệ Thống")
-    st.caption("Khi bạn mở danh sách trên LinkedIn và thấy profile ưng ý, hãy dán link vào đây để hệ thống lưu trữ và quản lý!")
+with tab_cookie:
+    st.markdown("### 🔑 Cấu Hình Cookie `li_at` Để Kích Hoạt Tự Động Hóa 100%")
+    st.markdown("""
+    Để Bot có thể tự động bóc tách hàng trăm hồ sơ General Manager / DOSM trên LinkedIn mà anh không cần copy paste thủ công, Bot cần **Cookie phiên đăng nhập (`li_at`)** của tài khoản LinkedIn anh.
+    
+    #### 🛠️ CÁCH LẤY COOKIE CHỈ MẤT 15 GIÂY:
+    1. Mở trang **[linkedin.com](https://www.linkedin.com)** trên Google Chrome (nơi anh đang đăng nhập).
+    2. Bấm phím **`F12`** (hoặc Chuột phải ➔ Chọn **Kiểm tra / Inspect**).
+    3. Chọn tab **`Application`** (hoặc **Ứng dụng**) ở thanh trên cùng ➔ Bấm vào mục **`Cookies`** ở cột bên trái ➔ Chọn **`https://www.linkedin.com`**.
+    4. Tìm dòng có tên là **`li_at`** ➔ Copy toàn bộ chuỗi ký tự ở cột **Value** (bắt đầu bằng `AQED...`).
+    5. Dán vào ô bên dưới và bấm **LƯU COOKIE**.
+    """)
 
-    with st.form("add_lead_form"):
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            inp_name = st.text_input("Họ & Tên Lãnh Đạo", placeholder="Ví dụ: Bê Trần, Doo Hyun Shim...")
-            inp_title = st.text_input("Chức Vụ", placeholder="Ví dụ: General Manager, DOSM...")
-        with col_f2:
-            inp_comp = st.text_input("Khách Sạn / Resort", placeholder="Ví dụ: Melia Danang, Grand Tourane...")
-            inp_city = st.selectbox("Khu Vực", ["Đà Nẵng", "Hội An", "Huế", "Nha Trang", "Phú Quốc", "Phan Thiết", "Đà Lạt"])
-        
-        inp_url = st.text_input("Đường Link Profile LinkedIn (Bắt đầu bằng https://www.linkedin.com/in/...)", placeholder="https://www.linkedin.com/in/...")
+    current_cookie = get_li_at_cookie()
+    masked_cookie = (current_cookie[:10] + "..." + current_cookie[-10:]) if len(current_cookie) > 20 else current_cookie
 
-        submit_btn = st.form_submit_button("💾 LƯU PROFILE VÀO DANH SÁCH", type="primary", use_container_width=True)
+    with st.form("cookie_form"):
+        inp_cookie = st.text_input("Dán chuỗi Cookie li_at vào đây:", value=masked_cookie, type="password", placeholder="AQEDAQxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+        save_cookie_btn = st.form_submit_button("💾 LƯU COOKIE LINKEDIN", type="primary", use_container_width=True)
 
-        if submit_btn:
-            if not inp_name or not inp_url or "/in/" not in inp_url:
-                st.error("⚠️ Vui lòng nhập đúng Họ Tên và đường link LinkedIn bắt đầu bằng https://www.linkedin.com/in/...")
+        if save_cookie_btn:
+            if not inp_cookie or "..." in inp_cookie:
+                st.warning("Vui lòng dán chuỗi Cookie mới!")
             else:
-                session = get_session()
-                exists = session.query(HotelExecutive).filter(HotelExecutive.profile_url == inp_url.strip()).first()
-                if exists:
-                    st.warning("⚠️ Profile này đã có trong danh sách!")
-                else:
-                    session.add(HotelExecutive(
-                        name=inp_name.strip(),
-                        title=inp_title.strip() or "General Manager",
-                        company=inp_comp.strip() or "Luxury Hotel",
-                        city=inp_city,
-                        location=f"{inp_city}, Vietnam",
-                        profile_url=inp_url.strip(),
-                        headline=f"{inp_title} at {inp_comp}",
-                        lead_score=98,
-                        status="Mới tìm thấy"
-                    ))
-                    session.commit()
-                    st.success(f"🎉 Đã lưu thành công hồ sơ của {inp_name} vào danh sách!")
-                    time.sleep(1.0)
-                    st.rerun()
-                session.close()
+                set_li_at_cookie(inp_cookie.strip())
+                st.success("🎉 ĐÃ LƯU COOKIE THÀNH CÔNG! Bot hiện đã có quyền tự động cào và quét toàn bộ sếp lớn trên LinkedIn!")
+                time.sleep(1.2)
+                st.rerun()
