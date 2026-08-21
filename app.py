@@ -31,7 +31,7 @@ from database.models import init_db, get_session, HotelExecutive, ConnectionLog,
 from engine.linkedin_bot import (
     get_daily_quota_status, send_direct_connection, get_setting, set_setting
 )
-from engine.priority_queue import get_daily_queue_20, get_backlog_queue_21_plus
+from engine.priority_queue import get_daily_queue_20, get_backlog_queue_21_plus, get_smart_linkedin_url
 from engine.telegram_notifier import send_telegram_daily_report
 from scheduler.heartbeat_tracker import get_heartbeat_status, log_activity
 from scheduler.background_worker import start_background_worker
@@ -410,7 +410,7 @@ with tab_directory:
                 "Khu Vực": e.city,
                 "Trạng Thái": e.status,
                 "Điểm Ưu Tiên": f"{e.lead_score}đ",
-                "Link Profile": e.profile_url
+                "Link Profile": get_smart_linkedin_url(e.name, e.company, e.profile_url)
             })
         df = pd.DataFrame(data)
         st.dataframe(df, use_container_width=True)
