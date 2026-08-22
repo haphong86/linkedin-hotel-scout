@@ -213,11 +213,12 @@ c4.metric("GIÁM ĐỐC SALES & MKT", dosm_count)
 
 st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
-# ── 3 TABS ĐIỀU KHIỂN CHÍNH ──────────────────────────────────────────
-tab_queue, tab_backlog, tab_bulk = st.tabs([
-    "🚀 TOP 20 HÔM NAY (KIỂM TRA LIVE/DIE)",
+# ── 4 TABS ĐIỀU KHIỂN CHÍNH ──────────────────────────────────────────
+tab_queue, tab_backlog, tab_directory, tab_bulk = st.tabs([
+    "🚀 TOP 20 HÔM NAY",
     "📋 HÀNG ĐỢI DỰ BỊ (#21+)",
-    "🌐 BULK SCAN TOÀN BỘ GM/DOSM"
+    "📖 DANH BẠ KHÁCH SẠN (BẤM TAY)",
+    "🌐 AUTO SCAN TOÀN QUỐC"
 ])
 
 
@@ -339,8 +340,91 @@ with tab_backlog:
                 </div>
                 """, unsafe_allow_html=True)
 
+
 # ─────────────────────────────────────────────────────────────────────
-# TAB 3: SCAN LIÊN TỤC TOÀN QUỐC — GM/DOSM/MARCOM/OWNER
+# TAB 3: DANH BẠ KHÁCH SẠN — BẤM KẾT BẠN TAY
+# ─────────────────────────────────────────────────────────────────────
+with tab_directory:
+    from database.hotel_directory import HOTEL_DIRECTORY, ALL_CITIES, get_by_city
+
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#0D0D0D,#080808);border:1px solid #E50914;border-radius:4px;padding:20px 24px;margin-bottom:20px;">
+      <div style="font-size:10px;letter-spacing:2px;color:#E50914;font-weight:700;text-transform:uppercase;">DANH BẠ KHÁCH SẠN 4-5 SAO TOÀN QUỐC</div>
+      <div style="font-family:'Montserrat',sans-serif;font-size:22px;font-weight:700;color:#FFF;margin:6px 0;">
+        📖 Tìm Theo Khách Sạn · Bấm Kết Bạn Tay
+      </div>
+      <div style="font-size:12px;color:#999;">
+        Mỗi khách sạn có đầy đủ tên lãnh đạo + link LinkedIn. Bấm nút đỏ để mở profile, bấm <b>Connect</b> trực tiếp trên LinkedIn.
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Bộ lọc theo thành phố
+    city_options = ["-- Tất cả --"] + sorted(ALL_CITIES)
+    selected_city = st.selectbox("🏙️ Lọc theo thành phố:", city_options, key="dir_city")
+
+    search_text = st.text_input("🔍 Tìm theo tên khách sạn hoặc tên người:", 
+                                 placeholder="vd: Hilton, Sven, Marriott...", key="dir_search")
+
+    st.divider()
+
+    # Lọc dữ liệu
+    filtered = []
+    for entry in HOTEL_DIRECTORY:
+        hotel, city, region, star, title, name, url = entry
+        if selected_city != "-- Tất cả --" and city != selected_city:
+            continue
+        if search_text and search_text.lower() not in hotel.lower() and search_text.lower() not in name.lower():
+            continue
+        filtered.append(entry)
+
+    st.markdown(f"**Đang hiển thị {len(filtered)} lãnh đạo**")
+    st.markdown("")
+
+    # Nhóm theo thành phố để hiển thị
+    current_city = None
+    for entry in filtered:
+        hotel, city, region, star, title, name, url = entry
+
+        # Header thành phố
+        if city != current_city:
+            current_city = city
+            star_str = "⭐" * star
+            st.markdown(f"""
+            <div style="background:#1A0000;border-left:3px solid #E50914;padding:8px 16px;margin:16px 0 8px;border-radius:0 4px 4px 0;">
+              <span style="font-size:14px;font-weight:700;color:#E50914;letter-spacing:1px;">{city.upper()}</span>
+              <span style="font-size:11px;color:#666;margin-left:8px;">{region}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Card từng người
+        name_display = name if name else "_(chưa có tên — click tìm kiếm)_"
+        has_name = bool(name)
+        btn_text = f"🔗 {name}" if has_name else "🔍 Tìm kiếm"
+        btn_color = "#E50914" if has_name else "#333"
+
+        st.markdown(f"""
+        <div style="background:#0D0D0D;border:1px solid #222;border-radius:4px;padding:12px 16px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <div>
+            <div style="font-size:11px;color:#888;">{star_str} · {hotel}</div>
+            <div style="font-size:13px;font-weight:600;color:#FFF;margin-top:2px;">
+              <span style="color:#E50914;">{title}</span>
+              {' · ' + name_display if name else ''}
+            </div>
+          </div>
+          <a href="{url}" target="_blank"
+             style="display:inline-block;background:{btn_color};color:#FFF;padding:7px 16px;border-radius:4px;font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap;">
+             {btn_text}
+          </a>
+        </div>
+        """, unsafe_allow_html=True)
+
+    if not filtered:
+        st.info("Không tìm thấy kết quả phù hợp. Thử thay đổi bộ lọc.")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# TAB 4: SCAN LIÊN TỤC TOÀN QUỐC — GM/DOSM/MARCOM/OWNER
 # ─────────────────────────────────────────────────────────────────────
 with tab_bulk:
     from engine.continuous_scanner import (
