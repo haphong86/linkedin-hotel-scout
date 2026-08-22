@@ -155,24 +155,57 @@ def get_scan_stats():
     }
 
 
-def _extract_profiles(page):
-    """Lấy link /in/ từ trang hiện tại"""
+def _extract_profiles(page) -> list:
+    """Lấy link /in/ từ trang hiện tại — dùng nhiều selector để không bỏ sót."""
     urls = []
+    seen = set()
+    bad  = {'/in/messaging', '/in/search', '/in/jobs', '/in/feed',
+            '/in/notifications', '/in/mynetwork', '/in/settings', '/in/learning'}
+
     try:
-        page.wait_for_selector("a[href*='/in/']", timeout=8000)
-        raw = page.eval_on_selector_all("a[href*='/in/']", "els => els.map(e => e.href)")
-        seen = set()
+        # Chờ bất kỳ link /in/ nào xuất hiện
+        try:
+            page.wait_for_selector("a[href*='/in/']", timeout=6000)
+        except Exception:
+            return []
+
+        # Lấy TẤT CẢ href có /in/ từ toàn bộ DOM (kể cả lazy-load)
+        raw = page.eval_on_selector_all(
+            "a[href*='/in/']",
+            "els => els.map(e => e.getAttribute('href') || e.href)"
+        )
+
+        # Cũng lấy từ page source (bắt các link trong JSON-LD hoặc data attribute)
+        try:
+            html = page.content()
+            extra = re.findall(r'linkedin\.com/in/([a-zA-Z0-9\-_%\.]{5,80})', html)
+            for slug in extra:
+                raw.append(f"https://www.linkedin.com/in/{slug}")
+        except Exception:
+            pass
+
         for href in raw:
-            m = re.search(r'(https?://www\.linkedin\.com/in/[a-zA-Z0-9\-_%\.]+)', href)
-            if m:
-                clean = re.sub(r'\?.*$', '', m.group(1)).rstrip('/') + '/'
-                bad = ['/in/messaging', '/in/search', '/in/jobs', '/in/feed',
-                       '/in/notifications', '/in/mynetwork']
-                if clean not in seen and not any(b in clean for b in bad):
-                    seen.add(clean)
-                    urls.append(clean)
+            if not href:
+                continue
+            # Chuẩn hóa URL
+            if href.startswith('/in/'):
+                href = f"https://www.linkedin.com{href}"
+            m = re.search(r'(https?://(?:www\.)?linkedin\.com/in/[a-zA-Z0-9\-_%\.]+)', href)
+            if not m:
+                continue
+            clean = re.sub(r'\?.*$', '', m.group(1)).rstrip('/') + '/'
+            # Lọc slug quá ngắn (dưới 3 ký tự) hoặc là trang hệ thống
+            slug = clean.split('/in/')[-1].rstrip('/')
+            if len(slug) < 3:
+                continue
+            if clean in seen or any(b in clean for b in bad):
+                continue
+            seen.add(clean)
+            urls.append(clean)
+
     except Exception:
         pass
+
     return urls
 
 
@@ -213,6 +246,7 @@ def run_scan_jobs(
     """
     Chạy scan cho các job được chỉ định (hoặc toàn bộ pending).
     stop_flag: callable trả về True nếu muốn dừng sớm.
+    Timing tối ưu: đủ chậm để tránh bị block, đủ nhanh để hoàn thành.
     """
     from playwright.sync_api import sync_playwright, TimeoutError as PwTimeout
 
@@ -232,13 +266,13 @@ def run_scan_jobs(
         jobs = get_pending_jobs(limit=999)
 
     total_jobs = len(jobs)
-    total_new = 0
+    total_new  = 0
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
             args=["--no-sandbox", "--disable-blink-features=AutomationControlled",
-                  "--disable-dev-shm-usage"]
+                  "--disable-dev-shm-usage", "--disable-gpu"]
         )
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -251,6 +285,8 @@ def run_scan_jobs(
             "httpOnly": True, "secure": True
         }])
         page = context.new_page()
+
+        consecutive_empty = 0  # đếm query liên tiếp không có kết quả
 
         for ji, job in enumerate(jobs):
             if stop_flag and stop_flag():
@@ -268,7 +304,7 @@ def run_scan_jobs(
                 session.commit()
             session.close()
 
-            job_new = 0
+            job_new   = 0
             job_found = 0
             exhausted = False
 
@@ -276,10 +312,10 @@ def run_scan_jobs(
                 if stop_flag and stop_flag():
                     break
 
-                start = pg * 10
+                start   = pg * 10
                 encoded = urllib.parse.quote(job["keywords"])
-                url = (f"https://www.linkedin.com/search/results/people/"
-                       f"?keywords={encoded}&origin=GLOBAL_SEARCH_HEADER&start={start}")
+                url     = (f"https://www.linkedin.com/search/results/people/"
+                           f"?keywords={encoded}&origin=GLOBAL_SEARCH_HEADER&start={start}")
                 try:
                     page.goto(url, wait_until="domcontentloaded", timeout=20000)
 
@@ -287,28 +323,36 @@ def run_scan_jobs(
                         browser.close()
                         return {"status": "cookie_expired", "total_new": total_new}
 
-                    time.sleep(random.uniform(2.5, 4.0))
+                    # ── TĂNG TỐC: chỉ chờ 1.5-2.5s thay vì 2.5-4s ──
+                    time.sleep(random.uniform(1.5, 2.5))
+
+                    # Scroll để load lazy content
+                    page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
+                    time.sleep(0.5)
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    time.sleep(1.0)
+                    time.sleep(0.5)
 
                     found = _extract_profiles(page)
+
                     if not found:
                         exhausted = True
-                        break
+                        break  # query này không có kết quả → bỏ qua trang tiếp
 
                     new = _save_new_profiles(found, job)
                     job_found += len(found)
                     job_new   += new
                     total_new += new
+                    consecutive_empty = 0  # reset counter khi tìm được
 
-                    if len(found) < 5:
+                    if len(found) < 5:  # ít hơn 5 = trang cuối rồi
                         exhausted = True
                         break
 
                 except Exception:
                     break
 
-                time.sleep(random.uniform(2.5, 4.0))
+                # ── TĂNG TỐC: nghỉ 1.5-2.5s giữa trang thay vì 2.5-4s ──
+                time.sleep(random.uniform(1.5, 2.5))
 
             # Cập nhật trạng thái job
             session = get_session()
@@ -317,14 +361,22 @@ def run_scan_jobs(
                 db_job.total_found += job_found
                 db_job.new_added   += job_new
                 db_job.current_page = max_pages
-                db_job.status = "exhausted" if exhausted else "done"
-                db_job.last_run = datetime.now()
-                # Lên lịch chạy lại sau 7 ngày để bắt người mới đăng ký
-                db_job.next_run = datetime.now() + timedelta(days=7)
+                db_job.status       = "exhausted" if exhausted else "done"
+                db_job.last_run     = datetime.now()
+                db_job.next_run     = datetime.now() + timedelta(days=7)
                 session.commit()
             session.close()
 
-            time.sleep(random.uniform(3, 6))
+            if job_found == 0:
+                consecutive_empty += 1
+            
+            # ── TĂNG TỐC: nghỉ 1.5-3s giữa query thay vì 3-6s ──
+            # Nếu 10 query liên tiếp không có kết quả → nghỉ 15s (có thể bị throttle)
+            if consecutive_empty >= 10:
+                time.sleep(15)
+                consecutive_empty = 0
+            else:
+                time.sleep(random.uniform(1.5, 3.0))
 
         browser.close()
 
